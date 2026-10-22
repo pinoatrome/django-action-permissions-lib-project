@@ -1,0 +1,24 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}{% include "admin/django_action_permissions/actionpermission/_breadcrumbs.html" %}{% endblock %}
+
+{% block content %}
+  {% if issues %}
+    <table>
+      <thead><tr><th>Level</th><th>Id</th><th>Message</th><th>Hint</th><th>Object</th></tr></thead>
+      <tbody>
+        {% for issue in issues %}
+          <tr>
+            <td>{% if issue.is_serious %}Error{% else %}Warning{% endif %}</td>
+            <td>{{ issue.id }}</td>
+            <td>{{ issue.msg }}</td>
+            <td>{{ issue.hint|default:"" }}</td>
+            <td>{{ issue.obj|default:"" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No issues: the settings and the stored permissions table are consistent.</p>
+  {% endif %}
+{% endblock %}

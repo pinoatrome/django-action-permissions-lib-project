@@ -1,0 +1,13 @@
+{% extends "admin/change_list.html" %}
+{% load admin_urls %}
+
+{% block object-tools-items %}
+  {% if yaml_available %}
+    {% if request.user.is_superuser %}
+      <li><a href="{% url opts|admin_urlname:'load' %}">Load YAML</a></li>
+    {% endif %}
+    <li><a href="{% url opts|admin_urlname:'export' %}">Export YAML</a></li>
+  {% endif %}
+  <li><a href="{% url opts|admin_urlname:'check' %}">Check configuration</a></li>
+  {{ block.super }}
+{% endblock %}

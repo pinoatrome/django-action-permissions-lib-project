@@ -4,14 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-action-permissions"
-version = "0.1.0"
-description = "Action-based permissions for Django REST framework viewsets, driven by an RBAC table"
+version = "0.2.0"
+description = "Action-based permissions for Django REST framework viewsets, driven by an RBAC/ABAC table stored in the database"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "Django>=5.2",
-    "djangorestframework>=3.16",
 ]
 classifiers = [
     "Framework :: Django",
@@ -31,6 +30,13 @@ test = [
     "pytest-django>=4.8",
     "pytest-cov>=5.0",
     "coverage[toml]>=7.5",
+    "PyYAML>=6",
+]
+drf = [
+    "djangorestframework>=3.16",
+]
+yaml = [
+    "PyYAML>=6",
 ]
 dev = [
     "tox>=4",
@@ -40,6 +46,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["django_action_permissions*"]
+
+[tool.setuptools.package-data]
+django_action_permissions = ["templates/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -53,6 +62,9 @@ extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "DJ"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_permissions.py" = ["E402"]  # its imports follow pytest.importorskip("rest_framework")
 
 [tool.ruff.lint.isort]
 known-first-party = ["django_action_permissions"]
@@ -69,6 +81,7 @@ source = ["django_action_permissions", "*/site-packages/django_action_permission
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+fail_under = 90
 exclude_also = ["raise NotImplementedError", "if TYPE_CHECKING:", "@(abc\\.)?abstractmethod"]
 
 [tool.coverage.html]

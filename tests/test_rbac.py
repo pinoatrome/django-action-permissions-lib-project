@@ -51,5 +51,7 @@ def test_an_unknown_permission_is_refused_with_a_hint():
 def test_a_table_granting_to_a_group_not_set_up_is_refused():
     table = {"auth.change_user": {"rbac": {"BOSSES"}}}
 
-    with pytest.raises(ValueError, match=r"'auth.change_user' is granted to 'BOSSES', which isn't one of the groups.*CLERKS"):
+    with pytest.raises(
+        ValueError, match=r"'auth.change_user' is granted to 'BOSSES', which isn't one of the groups.*CLERKS"
+    ):
         setup_rbac_permissions(table, ["CLERKS"])

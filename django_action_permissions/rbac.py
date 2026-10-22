@@ -19,18 +19,19 @@ def setup_rbac_permissions(permissions_table, group_names, keep=False):
             group.permissions.clear()
 
     for perm_code, item in permissions_table.items():
-        app_label, _, codename = perm_code.partition('.')
+        app_label, _, codename = perm_code.partition(".")
         try:
             permission = contrib_auth_models.Permission.objects.get(
                 content_type__app_label=app_label,
                 codename=codename,
             )
         except contrib_auth_models.Permission.DoesNotExist:
-            raise ValueError(f"Invalid permission code: '{perm_code}'. "
-                             f"Hint: run migration for '{app_label}'") from None
+            raise ValueError(f"Invalid permission code: '{perm_code}'. Hint: run migration for '{app_label}'") from None
 
-        for group_name in item['rbac']:
+        for group_name in item["rbac"]:
             if group_name not in groups:
-                raise ValueError(f"'{perm_code}' is granted to '{group_name}', which isn't one of the groups "
-                                 f"to set up: {', '.join(sorted(groups))}")
+                raise ValueError(
+                    f"'{perm_code}' is granted to '{group_name}', which isn't one of the groups "
+                    f"to set up: {', '.join(sorted(groups))}"
+                )
             groups[group_name].permissions.add(permission)

@@ -77,7 +77,8 @@ class FakeGroups:
 
 def user_with(perms=(), groups=(), authenticated=True):
     return SimpleNamespace(
-        is_authenticated=authenticated, groups=FakeGroups(groups), has_perm=lambda code, obj=None: code in perms)
+        is_authenticated=authenticated, groups=FakeGroups(groups), has_perm=lambda code, obj=None: code in perms
+    )
 
 
 def view_of(action, detail=False):
@@ -129,8 +130,12 @@ def test_skipping_detail_access_lets_a_group_retrieve():
     permission = permission_with({"auth.view_user": {"rbac": {"CLERKS"}, "no_detail": ["CLERKS"]}})
     permission.skip_detail_access(["retrieve", "info"])
 
-    assert permission.has_permission(request_of(user_with({"auth.view_user"}, ["CLERKS"])),
-                                     view_of("retrieve", detail=True)) is True
+    assert (
+        permission.has_permission(
+            request_of(user_with({"auth.view_user"}, ["CLERKS"])), view_of("retrieve", detail=True)
+        )
+        is True
+    )
 
 
 def test_without_a_table_entry_the_django_permission_decides_for_an_object_too():
@@ -144,8 +149,12 @@ def test_without_a_table_entry_the_django_permission_decides_for_an_object_too()
 def test_an_entry_without_abac_or_rules_is_the_model_permission_alone():
     permission = permission_with({"auth.change_user": {"rbac": {"CLERKS"}, "abac": {}}})
 
-    assert permission.has_object_permission(
-        request_of(user_with({"auth.change_user"}, ["CLERKS"])), view_of("update"), "any") is True
+    assert (
+        permission.has_object_permission(
+            request_of(user_with({"auth.change_user"}, ["CLERKS"])), view_of("update"), "any"
+        )
+        is True
+    )
 
 
 def test_an_abac_rule_allows_its_group_on_the_objects_it_accepts():

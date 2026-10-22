@@ -32,7 +32,7 @@ The RBAC table maps a Django permission string (`app_label.codename`, as
 table = {
     "shop.view_order": {"rbac": {"CLERKS", "MANAGERS"}, "abac": {}},
     "shop.change_order": {"rbac": {"MANAGERS"}, "abac": {"MANAGERS": ["own_branch"]}},
-    "shop.approve_order": {"rbac": {"MANAGERS"}, "abac": {}},   # a custom action `approve`
+    "shop.approve_order": {"rbac": {"MANAGERS"}, "abac": {}},  # a custom action `approve`
 }
 ```
 
@@ -50,7 +50,7 @@ class ShopPermission(BaseActionModelPermission):
     def get_perm_info(self, perm_code):
         return copy.deepcopy(table.get(perm_code))
 
-    def apply_rule(self, br_code, user, obj):          # ABAC rules, per object
+    def apply_rule(self, br_code, user, obj):  # ABAC rules, per object
         return br_code == "own_branch" and obj.branch_id == user.branch_id
 
 
@@ -69,7 +69,7 @@ Grant the groups what the table says (after `migrate`, so the permissions exist)
 ```python
 from django_action_permissions.rbac import setup_rbac_permissions
 
-setup_rbac_permissions(table, ["CLERKS", "MANAGERS"])             # groups created if missing;
+setup_rbac_permissions(table, ["CLERKS", "MANAGERS"])  # groups created if missing;
 setup_rbac_permissions(table, ["CLERKS", "MANAGERS"], keep=True)  # keep=True: don't remove other permissions
 ```
 
@@ -84,12 +84,22 @@ A table entry can also carry:
 An action the viewset doesn't route is a 405 for an authenticated user and a refusal (so a request for
 credentials) for an anonymous one. OPTIONS takes the `view` permission.
 
-## Tests
+## Supported versions
+
+Tested on Django 5.2 LTS (Python 3.13) and Django 6.1 (Python 3.14), with Django REST framework 3.16+.
+
+## Development
 
 ```bash
-pip install -e ".[test]"
-pytest
+pip install -e ".[dev,test]"
+pre-commit install          # ruff on commit, the tests (tox, Django 6.1) on push
+tox                         # lint, both Django versions, combined coverage
+tox -e lint                 # ruff check and ruff format --check only
+tox -e py314-django61       # one Django version
 ```
+
+`tox` combines the coverage of both Django versions (`tox -e coverage`): the report is printed, with the
+details in `htmlcov/index.html` and `coverage.xml` for CI.
 
 The tests use the auth models in an in-memory SQLite database (`tests/settings.py`): that is the library's
 own test setup, not a requirement on the app.

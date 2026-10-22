@@ -195,5 +195,12 @@ def test_a_refused_read_is_not_found_without_asking_again(setup, member, django_
     assert abac.refusal(customer, VIEW, other) is Http404
 
 
+def test_an_object_to_be_created_is_forbidden_not_hidden(setup, member, django_user_model):
+    setup(SELF_ONLY)
+
+    assert abac.refusal(member("CUSTOMERS"), CHANGE, django_user_model(username="unsaved")) is PermissionDenied
+    assert abac.refusal(member("CUSTOMERS", username="bob"), VIEW, django_user_model(username="x")) is PermissionDenied
+
+
 def test_an_object_that_isnt_a_model_instance_is_forbidden(member):
     assert abac.refusal(member("CUSTOMERS"), CHANGE, thing("bob")) is PermissionDenied

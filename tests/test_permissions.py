@@ -274,6 +274,15 @@ def test_an_object_the_user_can_read_is_forbidden(setup, customer_and_other):
 
 
 @pytest.mark.django_db
+def test_a_creation_refused_is_forbidden_not_hidden(setup, customer_and_other, django_user_model):
+    """The object a creation is checked on isn't saved yet: refused, it's a 403, there's nothing to hide."""
+    setup(SELF_ONLY)
+    customer, _other = customer_and_other
+
+    assert update(BaseActionModelPermission(), customer, django_user_model(username="new")) is False
+
+
+@pytest.mark.django_db
 def test_403_everywhere_when_asked(setup, customer_and_other):
     setup(SELF_ONLY)
     customer, other = customer_and_other

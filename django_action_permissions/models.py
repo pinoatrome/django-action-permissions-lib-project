@@ -1,4 +1,4 @@
-"""The permissions table as setup last applied it. Its `rbac` part is `Group.permissions`; the rest is here: the
+"""The action permissions as setup last applied them. Its `rbac` part is `Group.permissions`; the rest is here: the
 entries, the groups' rulesets, and the predicates' definitions."""
 
 from django.contrib.auth.models import Group, Permission
@@ -33,7 +33,7 @@ class ActionPermissionRule(models.Model):
 
 
 class ActionPermission(models.Model):
-    """A permission the table lists. The groups it's granted to (`rbac`) are `Group.permissions`."""
+    """An action permission: a permission setup stored. The groups it's granted to (`rbac`) are `Group.permissions`."""
 
     permission = models.OneToOneField(Permission, on_delete=models.CASCADE, related_name="action_permission")
     no_detail = models.ManyToManyField(

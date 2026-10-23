@@ -1,22 +1,27 @@
-"""The table read through the cache `ACTION_PERMISSIONS["CACHE"]` names, and dropped from it on every change."""
+"""Each action permission's entry read through the cache `ACTION_PERMISSIONS["CACHE"]` names, under its own key, and
+dropped from it when what it's made of changes."""
 
 import pytest
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, Permission
 from django.core.cache import caches
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
-from django_action_permissions import table
+from django_action_permissions import entries
 from django_action_permissions.models import ActionPermission, ActionPermissionGroup, ActionPermissionRule
 
 pytestmark = pytest.mark.django_db
 
-TABLE = {"auth.change_user": {"rbac": {"CUSTOMERS"}, "abac": {"CUSTOMERS": "owner"}, "no_detail": ["CLERKS"]}}
+CHANGE, VIEW, DELETE = "auth.change_user", "auth.view_user", "auth.delete_user"
+TABLE = {
+    CHANGE: {"rbac": {"CUSTOMERS"}, "abac": {"CUSTOMERS": "owner"}, "no_detail": ["CLERKS"]},
+    VIEW: {"rbac": {"CLERKS", "BOSSES"}, "abac": {"BOSSES": "yes"}},
+}
 
 
 @pytest.fixture(autouse=True)
 def cached(settings):
-    """The default configuration: the table cached in `default`."""
+    """The default configuration: the entries cached in `default`."""
     settings.ACTION_PERMISSIONS = {}
     caches["default"].clear()
     yield
@@ -29,77 +34,112 @@ def queries(function) -> int:
     return len(captured)
 
 
+def cached_codes() -> set[str]:
+    return {code for code in (CHANGE, VIEW, DELETE) if caches["default"].get(entries._key(code)) is not None}
+
+
+def read_both():
+    entries.perm_info(CHANGE)
+    entries.perm_info(VIEW)
+
+
 def rename(name, new_name):
     group = Group.objects.get(name=name)
     group.name = new_name
     group.save()
 
 
-def is_cached() -> bool:
-    return caches["default"].get(table.CACHE_KEY) is not None
-
-
-def test_the_default_configuration_caches_the_table_in_default(setup):
+def test_a_check_caches_its_own_permissions_entry_only(setup):
     setup(TABLE)
 
-    first = table.load_table()
+    first = entries.perm_info(CHANGE)
 
-    assert caches["default"].get(table.CACHE_KEY) == first
-    assert queries(table.load_table) == 0
-    assert table.perm_info("auth.change_user") == first["auth.change_user"]
+    assert cached_codes() == {CHANGE}
+    assert (
+        first
+        == entries.read_entry(CHANGE)
+        == {
+            "abac": {"CUSTOMERS": "owner"},
+            "predicates": {"owner": "tests.rules.owner"},
+            "no_detail": ["CLERKS"],
+            "staff": [],
+        }
+    )
+    assert queries(lambda: entries.perm_info(CHANGE)) == 0
 
 
-def test_without_a_cache_every_read_goes_to_the_database(setup, settings):
+def test_a_permission_that_isnt_an_action_permission_is_cached_too(setup):
+    setup(TABLE)
+
+    assert entries.perm_info(DELETE) is None
+    assert caches["default"].get(entries._key(DELETE)) == entries.UNLISTED
+    assert queries(lambda: entries.perm_info(DELETE)) == 0
+    assert entries.perm_info("nowhere.nothing") is None
+
+
+def test_without_a_cache_every_check_reads_the_database(setup, settings):
     setup(TABLE)
     settings.ACTION_PERMISSIONS = {"CACHE": None}
 
-    assert queries(table.load_table) > 0 and queries(table.load_table) > 0
-    table.invalidate_table(strict=True)  # nothing to drop
+    assert queries(lambda: entries.perm_info(CHANGE)) > 0 and queries(lambda: entries.perm_info(CHANGE)) > 0
+    entries.invalidate({CHANGE}, strict=True)  # nothing to drop
 
 
-def test_invalidation_drops_only_the_librarys_key(setup):
+def test_invalidation_drops_only_the_entries_named(setup):
     setup(TABLE)
-    table.load_table()
+    read_both()
     caches["default"].set("someone-elses", 1)
 
-    table.invalidate_table()
+    entries.invalidate({CHANGE})
+    entries.invalidate(set())
 
-    assert not is_cached() and caches["default"].get("someone-elses") == 1
+    assert cached_codes() == {VIEW} and caches["default"].get("someone-elses") == 1
 
 
-def test_setup_drops_the_cached_table_once_committed(setup, django_capture_on_commit_callbacks):
-    setup(TABLE)
-    table.load_table()
+def test_setup_drops_the_entries_it_writes_and_removes(setup, django_capture_on_commit_callbacks):
+    setup({**TABLE, DELETE: {"rbac": {"CLERKS"}}})
+    read_both()
+    entries.perm_info(DELETE)
 
     with django_capture_on_commit_callbacks(execute=True):
-        setup({**TABLE, "auth.view_user": {"rbac": {"CLERKS"}}})
+        setup({VIEW: TABLE[VIEW], CHANGE: {"rbac": {"CUSTOMERS"}}})  # DELETE removed, CHANGE without ruleset
 
-    assert not is_cached()
-    assert set(table.load_table()) == {"auth.change_user", "auth.view_user"}
+    assert cached_codes() == set()
+    assert entries.perm_info(CHANGE)["abac"] == {} and entries.perm_info(DELETE) is None
 
 
 @pytest.mark.parametrize(
-    "change",
+    "change, dropped",
     [
-        lambda: ActionPermissionRule.objects.get(code="owner").save(),
-        lambda: ActionPermissionGroup.objects.get().save(),
-        lambda: ActionPermissionGroup.objects.get().delete(),
-        lambda: ActionPermission.objects.get().save(),
-        lambda: ActionPermission.objects.get().no_detail.clear(),
-        lambda: ActionPermission.objects.get().staff.add(Group.objects.get(name="CLERKS")),
-        lambda: ActionPermission.objects.get().delete(),
-        lambda: rename("CLERKS", "CLERKS-2"),
-        lambda: Group.objects.get(name="BOSSES").delete(),
+        (lambda: ActionPermission.objects.get(permission__codename="change_user").save(), {CHANGE}),
+        (lambda: ActionPermission.objects.get(permission__codename="change_user").no_detail.clear(), {CHANGE}),
+        (
+            lambda: ActionPermission.objects.get(permission__codename="view_user").staff.add(
+                Group.objects.get(name="CLERKS")
+            ),
+            {VIEW},
+        ),
+        (lambda: ActionPermission.objects.get(permission__codename="view_user").delete(), {VIEW}),
+        (lambda: ActionPermissionGroup.objects.get(group__name="CUSTOMERS").save(), {CHANGE}),
+        (lambda: ActionPermissionGroup.objects.get(group__name="BOSSES").delete(), {VIEW}),
+        (lambda: ActionPermissionRule.objects.get(code="owner").save(), {CHANGE}),
+        (lambda: ActionPermissionRule.objects.get(code="yes").save(), {VIEW}),
+        (lambda: ActionPermissionRule.objects.get(code="never").save(), set()),  # used by no entry
+        (lambda: rename("CLERKS", "CLERKS-2"), {CHANGE}),  # CHANGE's no_detail; VIEW only grants it (rbac)
+        (lambda: rename("BOSSES", "BOSSES-2"), {VIEW}),
+        (lambda: Group.objects.get(name="CUSTOMERS").delete(), {CHANGE}),
+        (lambda: Group.objects.create(name="NEWCOMERS"), set()),
+        (lambda: Permission.objects.get(content_type__app_label="auth", codename="view_user").delete(), {VIEW}),
     ],
 )
-def test_a_change_to_the_stored_table_drops_the_cached_one(setup, change, django_capture_on_commit_callbacks):
+def test_a_change_drops_the_entries_it_affects_and_no_other(setup, change, dropped, django_capture_on_commit_callbacks):
     setup(TABLE)
-    table.load_table()
+    read_both()
 
     with django_capture_on_commit_callbacks(execute=True):
         change()
 
-    assert not is_cached()
+    assert cached_codes() == {CHANGE, VIEW} - dropped
 
 
 def test_a_cache_that_cant_be_read_or_written_leaves_the_database_to_answer(setup, monkeypatch, caplog):
@@ -109,12 +149,12 @@ def test_a_cache_that_cant_be_read_or_written_leaves_the_database_to_answer(setu
         raise ConnectionError("cache down")
 
     monkeypatch.setattr(caches["default"], "get", fail)
-    assert set(table.load_table()) == {"auth.change_user"}
+    assert entries.perm_info(CHANGE)["abac"] == {"CUSTOMERS": "owner"}
     assert "the cache can't be read" in caplog.text
 
     monkeypatch.undo()
     monkeypatch.setattr(caches["default"], "set", fail)
-    assert set(table.load_table()) == {"auth.change_user"}
+    assert entries.perm_info(VIEW)["abac"] == {"BOSSES": "yes"}
     assert "the cache can't be written" in caplog.text
 
 
@@ -126,8 +166,8 @@ def test_a_failed_invalidation_is_logged_but_raises_for_setup(
     def fail(*args, **kwargs):
         raise ConnectionError("cache down")
 
-    monkeypatch.setattr(caches["default"], "delete", fail)
-    table.invalidate_table()
+    monkeypatch.setattr(caches["default"], "delete_many", fail)
+    entries.invalidate({CHANGE})
     assert "couldn't be dropped" in caplog.text
 
     with pytest.raises(ConnectionError), django_capture_on_commit_callbacks(execute=True):

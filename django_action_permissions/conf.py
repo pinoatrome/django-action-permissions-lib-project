@@ -9,8 +9,9 @@ DEFAULTS = {
     # Without DRF, the name of one of these two policies.
     "DEFAULT_PERMISSION": "django_action_permissions.permissions.DenyAll",
     "RULES_BACKEND": "django_action_permissions.backends.DenyUnlessAllowedRulesBackend",
-    # An alias of CACHES holding the table between checks; None reads the database on each check. The cache must be
-    # shared by every process of the project (Redis, Memcached, the database cache), not a LocMemCache.
+    # An alias of CACHES holding each action permission's entry between checks; None reads the database on each
+    # check. The cache must be shared by every process of the project (Redis, Memcached, the database cache), not a
+    # LocMemCache.
     "CACHE": "default",
     "CACHE_TIMEOUT": 300,
     # The dotted path of a function (user) -> manager, the user a `staff` group acts as, for the checks that have no

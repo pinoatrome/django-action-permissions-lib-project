@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from rest_framework import exceptions
 from rest_framework.test import APIRequestFactory
 
-from django_action_permissions import table
+from django_action_permissions import entries
 from django_action_permissions.permissions import BaseActionModelPermission, DenyAll, parse_view_action
 from tests.conftest import thing
 from tests.test_backends import ALLOW_ANY_SETTINGS
@@ -70,7 +70,7 @@ def test_unrouted_method_is_denied_to_anonymous_users():
     assert BaseActionModelPermission().has_permission(request_by(False, "delete"), view) is False
 
 
-# ── Checking a request against the stored table ──────────────────────────────
+# ── Checking a request against the stored action permissions ─────────────────
 
 CHANGE = "auth.change_user"
 
@@ -97,10 +97,10 @@ def test_the_permission_is_the_viewsets_model_and_the_actions_operation():
 
 
 @pytest.mark.django_db
-def test_the_entry_is_the_stored_tables(setup):
+def test_the_entry_is_the_stored_one(setup):
     setup({CHANGE: {"rbac": {"CUSTOMERS"}, "abac": {"CUSTOMERS": "owner"}}})
 
-    assert BaseActionModelPermission().get_perm_info(CHANGE) == table.perm_info(CHANGE)
+    assert BaseActionModelPermission().get_perm_info(CHANGE) == entries.perm_info(CHANGE)
     assert BaseActionModelPermission().get_perm_info("auth.view_user") is None
 
 

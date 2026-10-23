@@ -39,7 +39,7 @@ ROOT_URLCONF = "tests.urls"
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True
-# A test that wants the cache turns it on (tests/test_cache.py): with it, a table changed inside a test's
+# A test that wants the cache turns it on (tests/test_cache.py): with it, an entry changed inside a test's
 # transaction would be read from the cache, which is dropped only on commit.
 ACTION_PERMISSIONS = {"CACHE": None}
 REST_FRAMEWORK = {"DEFAULT_PERMISSION_CLASSES": ["django_action_permissions.permissions.DenyAll"]}  # check W004

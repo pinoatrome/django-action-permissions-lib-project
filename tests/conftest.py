@@ -10,6 +10,14 @@ from tests import rules
 GROUPS = ["BOSSES", "CLERKS", "CUSTOMERS"]
 
 
+def stored_entries() -> dict:
+    """Every action permission's entry, read from the database (the library itself reads one at a time)."""
+    from django_action_permissions.entries import entry_codes, read_entry
+    from django_action_permissions.models import ActionPermission
+
+    return {code: read_entry(code) for code in sorted(entry_codes(ActionPermission.objects.all()))}
+
+
 def thing(owner="ann"):
     """An object with an owner, for the `owner` predicate."""
     return SimpleNamespace(owner=owner)

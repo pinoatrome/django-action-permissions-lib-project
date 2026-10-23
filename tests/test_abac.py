@@ -1,4 +1,4 @@
-"""`unrestricted` and `allowed`: the object checks of the stored table, outside a view."""
+"""`unrestricted`, `allowed` and `held_permissions`: the object checks of the action permissions, outside a view."""
 
 import pytest
 from django.contrib.auth.models import AnonymousUser, Group, Permission
@@ -6,7 +6,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404
 
 from django_action_permissions import abac
-from django_action_permissions.abac import allowed, granting_groups, unrestricted
+from django_action_permissions.abac import allowed, granting_groups, held_permissions, unrestricted
 from django_action_permissions.utils import drf_installed
 from tests.conftest import thing
 from tests.test_backends import ALLOW_ANY_SETTINGS
@@ -204,3 +204,57 @@ def test_an_object_to_be_created_is_forbidden_not_hidden(setup, member, django_u
 
 def test_an_object_that_isnt_a_model_instance_is_forbidden(member):
     assert abac.refusal(member("CUSTOMERS"), CHANGE, thing("bob")) is PermissionDenied
+
+
+# ── held_permissions: what the user holds, filtered in the database ──────────
+
+
+def direct(user, codename):
+    user.user_permissions.add(Permission.objects.get(content_type__app_label="auth", codename=codename))
+
+
+def test_a_group_without_a_ruleset_holds_on_any_object_one_with_on_its_own(member):
+    assert held_permissions(member("CLERKS")) == {CHANGE: True, "auth.view_user": True}
+    assert held_permissions(member("CUSTOMERS", username="cid")) == {CHANGE: False}
+
+
+def test_one_unrestricted_group_is_enough(member):
+    assert held_permissions(member("CUSTOMERS", "CLERKS")) == {CHANGE: True, "auth.view_user": True}
+    assert held_permissions(member("CUSTOMERS", "BOSSES", username="bea")) == {CHANGE: False}
+
+
+def test_a_superuser_holds_every_action_permission_and_a_direct_grant_is_on_any_object(member):
+    superuser = member(username="root", is_superuser=True)
+    given = member("CUSTOMERS", username="dan")
+    direct(given, "change_user")
+    direct(given, "delete_user")  # not an action permission: not held as one
+
+    assert held_permissions(superuser) == {CHANGE: True, "auth.view_user": True}
+    assert held_permissions(given) == {CHANGE: True}
+
+
+def test_nobody_holds_nothing(member):
+    inactive = member("CLERKS", username="old", is_active=False)
+
+    assert held_permissions(AnonymousUser()) == {} and held_permissions(inactive) == {}
+    assert held_permissions(member(username="nobody")) == {}
+
+
+def test_held_permissions_agree_with_unrestricted(member):
+    from django_action_permissions.entries import entry_codes
+    from django_action_permissions.models import ActionPermission
+
+    users = [member("CLERKS"), member("CUSTOMERS", username="cid"), member("CUSTOMERS", "BOSSES", username="bea")]
+    for user in users:
+        held = held_permissions(user)
+        for perm in entry_codes(ActionPermission.objects.all()):
+            assert held.get(perm) == (unrestricted(user, perm) if user.has_perm(perm) else None), (user, perm)
+
+
+def test_held_permissions_take_two_queries_however_many_action_permissions(setup, member, django_assert_num_queries):
+    setup({**TABLE, "auth.delete_user": {"rbac": {"CLERKS"}}, "auth.add_user": {"rbac": {"CLERKS"}}})
+    clerk = member("CLERKS", "CUSTOMERS")
+
+    with django_assert_num_queries(2):
+        held = held_permissions(clerk)
+    assert len(held) == 4

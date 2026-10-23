@@ -1,28 +1,36 @@
 # django-action-permissions-lib-project
 
-Action-based permissions for Django REST framework viewsets and plain Django views, driven by a permissions table.
-A viewset action is checked against the Django model permission it stands for. The table says which groups hold each permission
-(RBAC) and which objects they may use it on (ABAC rules). Setup writes the table to the database; at runtime it is
-read from there, through a Django cache. Nothing here knows about a particular project: the table, its rules and
-the group names are passed in by the app that uses it.
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white)](#supported-versions)
+[![Django](https://img.shields.io/badge/django-5.2%20LTS%20%7C%206.1-092E20?logo=django&logoColor=white)](#supported-versions)
+[![Django REST framework](https://img.shields.io/badge/DRF-3.16%2B%20%28optional%29-A30000)](#usage)
+[![Tested](https://img.shields.io/badge/tested-Django%205.2%20%2B%20Py%203.13%20%7C%20Django%206.1%20%2B%20Py%203.14%20%7C%20without%20DRF-success)](#development)
+[![Release](https://img.shields.io/github/v/tag/pinoatrome/django-action-permissions-lib-project?label=release&sort=semver)](https://github.com/pinoatrome/django-action-permissions-lib-project/tags)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](pyproject.toml)
+
+Action-based permissions for Django REST framework viewsets and plain Django views. A viewset action is checked
+against the Django model permission it stands for, an action permission: which groups hold it (RBAC) and which
+objects they may use it on (ABAC rulesets). Setup writes the permission definitions to the database; at runtime each
+check reads its own permission's entry from there, through a Django cache. Nothing here knows about a particular
+project: the definitions, their predicates and the group names are passed in by the app that uses it.
 
 - `permissions`: `BaseActionModelPermission`, which maps a viewset action to the model permission it needs (`list`
   and `retrieve` -> `view_<model>`, `create` -> `add_<model>`, `update` and `partial_update` -> `change_<model>`,
   `destroy` -> `delete_<model>`, a custom action -> `<action>_<model>`, e.g. `upload_document`) and checks objects
-  against the table; `DenyAll`. The one module that needs Django REST framework (the `drf` extra).
+  against their rulesets; `DenyAll`. The one module that needs Django REST framework (the `drf` extra).
 - `mixins`: `OperationInfoPermissionMixin` and `CodeInfoPermissionMixin` fix a permission class's operation or
   whole permission code, for one action.
 - `predicates`: the `Predicate` protocol, `@predicate`, and rulesets (predicates composed with `&`, `|`, `~`);
   `rules`: the built-in predicates.
-- `rbac`: `setup_rbac_permissions`, which writes the table and its predicates to the database.
+- `rbac`: `setup_rbac_permissions`, which writes the permission definitions and their predicates to the database.
+- `entries`: each action permission's entry as the checks read it, cached under its own key.
 - `views`: `permission_required` and `PermissionRequiredMixin`, for plain Django views (no DRF needed).
 - `abac`: `unrestricted(user, perm)` and `allowed(user, perm, obj)`, the same checks in any code.
 - `backends`: the rules backends, which run the rules and read their answers.
-- `yaml_io` and the commands `django_action_permissions_load` / `django_action_permissions_export`: the table as a
-  YAML document.
-- `auth`: `ActionPermissionBackend`, an optional authentication backend: `user.has_perm(perm, obj)` by the table.
-- `admin`: every part of the table editable, and the Load, Export and Check tools.
-- `checks`: system checks of the settings and of the stored table.
+- `yaml_io` and the commands `django_action_permissions_load` / `django_action_permissions_export`: the permission
+  definitions as a YAML document.
+- `auth`: `ActionPermissionBackend`, an optional authentication backend: `user.has_perm(perm, obj)` by the rulesets.
+- `admin`: every part of the action permissions editable, and the Load, Export and Check tools.
+- `checks`: system checks of the settings and of the stored action permissions.
 
 ## Install
 
@@ -43,7 +51,7 @@ INSTALLED_APPS = [
 ]
 ```
 
-Then `python manage.py migrate`, and set up the table (below).
+Then `python manage.py migrate`, and set up the permission definitions (below).
 
 ## Predicates
 
@@ -93,15 +101,16 @@ Predicates compose into a ruleset with `&` (and), `|` (or), `~` (not) and parent
 The order is the execution order: `~is_blocked & own_order` checks the block first. A `PermissionDenied` goes
 through every operator and blocks.
 
-## The table
+## Permission definitions
 
-The table maps a Django permission string (`app_label.codename`, as `user.has_perm()` takes it) to its entry:
+The definitions setup takes map a Django permission string (`app_label.codename`, as `user.has_perm()` takes it) to
+its entry; each permission listed becomes an action permission:
 
 ```python
 from django_action_permissions.rules import is_staff
 from shop.rules import is_archived, own_order
 
-TABLE = {
+DEFINITIONS = {
     "shop.view_order": {
         "rbac": {"CLERKS", "CUSTOMERS"},  # the groups granted the permission
         "abac": {"CUSTOMERS": "own_order | is_staff"},  # a group's ruleset, as an expression ...
@@ -122,15 +131,15 @@ permission without a ruleset holds it on any object. Set it up (after `migrate`,
 ```python
 from django_action_permissions.rbac import setup_rbac_permissions
 
-setup_rbac_permissions(TABLE, ["CLERKS", "CUSTOMERS"])  # groups created if missing
-setup_rbac_permissions(TABLE, ["CLERKS", "CUSTOMERS"], keep=True)
+setup_rbac_permissions(DEFINITIONS, ["CLERKS", "CUSTOMERS"])  # groups created if missing
+setup_rbac_permissions(DEFINITIONS, ["CLERKS", "CUSTOMERS"], keep=True)
 ```
 
 Setup runs in one transaction. It stores the registered predicates (and the definitions `rules=` gives,
 `{code: {"fqn", "description"}}`, e.g. a YAML document's), replaces each entry it lists, the rulesets in their
 canonical form (`(own_order | is_staff) & ~archived`), and gives the groups the permissions it grants. Without
-`keep`, the groups lose any other permission, and the entries the table no longer lists, and the predicates no
-longer defined and unused, are removed. A table that names a group not set up, gives a ruleset to a group its
+`keep`, the groups lose any other permission, and the entries the definitions no longer list, and the predicates no
+longer defined and unused, are removed. Definitions that name a group not set up, gives a ruleset to a group its
 `rbac` doesn't grant, has a ruleset that doesn't parse or names an unknown predicate, or a predicate that doesn't
 import, is a `ValueError`, raised before anything is written; so is a list of rules (write `a | b`, or `a & b`).
 
@@ -145,7 +154,8 @@ default permission:
 |---|---|---|
 | a ruleset answers `None` | deny | allow |
 
-A permission the table doesn't list is left to `user.has_perm(perm, obj)` (Django's object permission backends),
+A permission that isn't an action permission is left to `user.has_perm(perm, obj)` (Django's object permission
+backends),
 and no group holds it on any object (`unrestricted` is false until setup has run).
 
 ## Settings
@@ -168,8 +178,11 @@ the project's `DEFAULT_PERMISSION_CLASSES` (the check `W004` says when it isn't)
 doesn't set its own `permission_classes` is closed. A custom backend subclasses `BaseRulesBackend` (e.g. to override
 `order`).
 
-The table is cached under one key (`django_action_permissions:table`) of the `CACHE` alias, and dropped from it
-when setup commits and on any change of the stored table, the admin's included. The cache must be shared by every
+A check reads only the entry of the permission it checks (`entries.perm_info`: its rulesets, the definitions of
+their predicates, `no_detail`, `staff`), cached under its own key (`django_action_permissions:perm:<perm>`) of the
+`CACHE` alias; a permission that isn't an action permission is cached as such. A change in the database deletes the
+keys of the entries it affects once it commits: its own rows, a predicate it uses, a group it names; setup, the
+admin's edits and a shell's alike. No whole set of permissions is ever loaded. The cache must be shared by every
 process of the project (Redis, Memcached, the database cache): a `LocMemCache` is kept by each process on its own
 (the check `W001` says so). A cache that fails is logged, and the database answers.
 
@@ -188,7 +201,7 @@ What to use depends on whether Django REST framework is installed (the `drf` ext
 | a rule blocks by raising | Django's or DRF's `PermissionDenied` | Django's `PermissionDenied` |
 | `DEFAULT_PERMISSION` | a DRF permission class, in `DEFAULT_PERMISSION_CLASSES` (check `W004`) | `DenyAll` or `AllowAny`, by name only (check `E001`) |
 
-Setup, the stored table and its cache, the rules backends, the YAML tools, the commands and the admin are the same
+Setup, the stored action permissions and their cache, the rules backends, the YAML tools, the commands and the admin are the same
 in both.
 
 ### With DRF: viewsets
@@ -202,7 +215,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 ```
 
 `has_permission` checks the action's permission (and `no_detail`), `has_object_permission` the object against the
-table: call `self.check_object_permissions(request, obj)` on an object to be created, too. A project with `staff`
+group's ruleset: call `self.check_object_permissions(request, obj)` on an object to be created, too. A project with `staff`
 groups subclasses it to implement `manager_user(user)`. An action the viewset doesn't route is a 405 for an
 authenticated user and a refusal (so a request for credentials) for an anonymous one. OPTIONS takes the `view`
 permission.
@@ -222,7 +235,7 @@ names (the check `W004` says when they differ).
 ### Plain Django views, with or without DRF
 
 `django_action_permissions.views` holds the counterparts of Django's `permission_required` and
-`PermissionRequiredMixin`, built on the table. As Django's, an anonymous visitor is sent to the login page
+`PermissionRequiredMixin`, built on the action permissions. As Django's, an anonymous visitor is sent to the login page
 (`LOGIN_URL`), and a signed-in user who may not gets a 403 rather than a login page to come back from; an object
 they may not use is a 404 when they can't read it either, as in the DRF class (`not_found_when_unreadable=False`
 on the decorator, or as the mixin's attribute, for 403 everywhere). Several permissions must all be held.
@@ -252,7 +265,7 @@ from django_action_permissions.views import PermissionRequiredMixin
 
 class OrderDetail(PermissionRequiredMixin, DetailView):
     model = Order
-    permission_required = "shop.view_order"  # get_object() refuses an order the table doesn't allow (403)
+    permission_required = "shop.view_order"  # get_object() refuses an order its ruleset doesn't allow
 
 
 class OrderList(PermissionRequiredMixin, ListView):
@@ -278,7 +291,7 @@ with `permission_unrestricted = True`, and `get_object()` checks the object (`al
 
 Django has no permission classes, so nothing closes a view by default but
 `django.contrib.auth.middleware.LoginRequiredMiddleware` (Django 5.1+; the check `W005` says when it's missing with
-`DenyAll`). It requires a login only: the views still ask the table, with `views` or `abac`.
+`DenyAll`). It requires a login only: the views still ask the action permissions, with `views` or `abac`.
 
 `DEFAULT_PERMISSION` then only names the policy of the rules backend: `django_action_permissions.permissions.DenyAll`
 or `rest_framework.permissions.AllowAny`, by name, as neither can be imported (the check `E001` refuses anything
@@ -290,10 +303,11 @@ Both map a request to a Django model permission of the view's queryset model and
 DRF's map the HTTP method: reads ask for nothing, and a POST to a custom action asks for `add_<model>`. This
 library maps the viewset action: reads ask for `view_<model>`, a custom action for `<action>_<model>`. On an object,
 `DjangoObjectPermissions` asks `user.has_perms(perms, obj)`, per-object grants stored by an authentication backend
-such as django-guardian; this library runs the table's rules on the object's attributes, and stores nothing per
-object. The two meet where the table is silent: for a permission it doesn't list, the object check is
+such as django-guardian; this library runs a group's ruleset on the object's attributes, and stores nothing per
+object. The two meet where this library is silent: for a permission that isn't an action permission, the object
+check is
 `user.has_perm(perm, obj)`, so guardian's grants apply. Both answer 404 rather than 403 for an object the user can't
-read. With the auth backend below, DRF's own `DjangoObjectPermissions` asks the table too.
+read. With the auth backend below, DRF's own `DjangoObjectPermissions` asks the rulesets too.
 
 ### Django's `user.has_perm(perm, obj)`: the optional auth backend
 
@@ -304,29 +318,34 @@ AUTHENTICATION_BACKENDS = [
 ]
 ```
 
-Without an object, `ModelBackend` answers (`Group.permissions`, which setup writes). With one, for a permission the
-table lists, `ActionPermissionBackend` answers as `abac.allowed`: Django's own API then asks the table, so templates,
+Without an object, `ModelBackend` answers (`Group.permissions`, which setup writes). With one, for an action
+permission, `ActionPermissionBackend` answers as `abac.allowed`: Django's own API then asks its rulesets, so templates,
 services, guardian-style code and DRF's `DjangoObjectPermissions` follow it, unchanged. As any Django backend, it
 answers among the others: one allowing is enough, so another object-permission backend (django-guardian) may allow
-what the table refuses, but a rule raising `PermissionDenied` stops the backends after it (Django's
-`_user_has_perm`). A permission the table doesn't list is left to the other backends. The backend has no view to ask
+what a ruleset refuses, but a rule raising `PermissionDenied` stops the backends after it (Django's
+`_user_has_perm`). A permission that isn't an action permission is left to the other backends. The backend has no view to ask
 for a `staff` group's manager: `ACTION_PERMISSIONS["MANAGER_USER"]` names the function (`user -> manager`; the check
 `E007` says when it doesn't import), and without it a staff group allows nothing there.
 
-`BaseActionModelPermission`, `views` and `abac` don't need the backend: they ask the table directly.
+`BaseActionModelPermission`, `views` and `abac` don't need the backend: they ask the action permissions directly.
 
 ### In any code
 
 ```python
-from django_action_permissions.abac import allowed, unrestricted
+from django_action_permissions.abac import allowed, held_permissions, unrestricted
 
 unrestricted(user, "shop.view_order")  # on any object: e.g. a list shows every order, or the user's own
 allowed(user, "shop.view_order", order)
+held_permissions(user)  # {"shop.view_order": False, ...}: every action permission held, and whether on any object
 ```
+
+`held_permissions(user)` is what a profile or a menu asks: the action permissions the user holds (through their
+groups or directly), each with whether on any object (as `unrestricted` would answer), filtered in the database in
+two queries, however many action permissions there are.
 
 ## YAML
 
-The table as one document, the rulesets as expressions:
+The permission definitions as one document, the rulesets as expressions:
 
 ```yaml
 groups: [CLERKS, CUSTOMERS]
@@ -345,7 +364,7 @@ python manage.py django_action_permissions_export [-o permissions.yaml]
 
 Loading is setup (`load_yaml`); a document of the wrong shape is refused, naming where. The export
 (`dump_yaml`) is what the database holds: sorted, the rulesets canonical, the definitions of the predicates they
-use, the groups the table names (others are left out, so loading the export can't strip them of their
+use, the groups they name (others are left out, so loading the export can't strip them of their
 permissions). Load, export, load and export again
 gives the same document.
 
@@ -365,7 +384,7 @@ Load and Export need the `yaml` extra; without it they aren't offered.
 
 ## Checks
 
-`python manage.py check` checks the settings; `python manage.py check --database default` the stored table too.
+`python manage.py check` checks the settings; `python manage.py check --database default` the stored action permissions too.
 
 - `E001` `DEFAULT_PERMISSION` isn't a DRF permission class (without DRF: isn't `DenyAll` or `AllowAny`);
   `E002` `RULES_BACKEND` isn't a `BaseRulesBackend`; `E003` they don't go together; `E004` `CACHE` isn't an alias
@@ -374,7 +393,7 @@ Load and Export need the `yaml` extra; without it they aren't offered.
 - `W004` (with DRF) `DEFAULT_PERMISSION` isn't in `REST_FRAMEWORK["DEFAULT_PERMISSION_CLASSES"]`; `W005` (without
   DRF) `DenyAll` without `LoginRequiredMiddleware`.
 - `E005` a predicate's function doesn't import; `E006` a group has a ruleset for a permission it doesn't hold;
-  `E008` a ruleset doesn't parse, or names a predicate not stored; `W002` the table is empty (setup not run);
+  `E008` a ruleset doesn't parse, or names a predicate not stored; `W002` there's no action permission (setup not run);
   `W003` a stored predicate isn't used and no `@predicate` defines it any more; `W006` a registered predicate isn't
   stored (setup hasn't run since it was added).
 
@@ -385,7 +404,29 @@ Load and Export need the `yaml` extra; without it they aren't offered.
    and write each group's `abac` list as one ruleset: `[a, b]` read as "any allows" is `a | b`, a `rules` list
    ("all must pass") is `a & b`.
 3. Run setup again: until then no group holds a permission on any object.
-4. Drop the overrides of `get_perm_info` and `apply_rule`: the table is the database's.
+4. Drop the overrides of `get_perm_info` and `apply_rule`: the action permissions are the database's.
+
+## Inspiration
+
+The implementation has been inspired by [django-rules](https://github.com/dfunckt/django-rules), whose ideas it
+borrows:
+
+- **predicates**: plain functions of the user and the object, made predicates by a decorator (`@predicate`);
+- **composition**: predicates combined with `&`, `|` and `~` into larger rules (here, rulesets);
+- **Django's own API**: an authentication backend answering `user.has_perm(perm, obj)`
+  (`auth.ActionPermissionBackend`), and a view decorator and a class-based view mixin in place of Django's
+  (`views.permission_required`, `views.PermissionRequiredMixin`).
+
+What this library adds is the RBAC side and where the rules live:
+- the groups granted each permission (`Group.permissions`);
+- one ruleset per group and permission;
+- a DRF permission mapping each viewset action to its model permission;
+- the action permissions stored in the database rather than declared in code at import time. Setup writes them
+  from definitions in Python or YAML, the admin edits them, and each check reads one entry at a time through a
+  cache.
+
+A predicate may also answer `None` ("doesn't apply"): the operators skip it, and the rules backend's policy decides
+when nothing else does.
 
 ## Supported versions
 

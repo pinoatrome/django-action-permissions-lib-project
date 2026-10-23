@@ -1,6 +1,6 @@
 """DRF permission classes that check a viewset action against the matching
-Django model permission, with the permissions table's entry for each permission
-(`table`), its objects checked by `abac.allowed`. The one module that needs Django
+Django model permission, with the action permission's entry (`entries`), its
+objects checked by `abac.allowed`. The one module that needs Django
 REST framework (the `drf` extra); for an open default, DRF's own `AllowAny`."""
 
 import logging
@@ -9,7 +9,7 @@ from django.http import Http404
 from rest_framework import exceptions as rest_exceptions
 from rest_framework import permissions as rest_permissions
 
-from . import abac, table
+from . import abac, entries
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def parse_view_action(view):
 class BaseActionModelPermission(rest_permissions.BasePermission):
     """Allows a viewset action if the user holds the matching model permission,
     `<app_label>.<operation>_<model_name>` (see `parse_view_action`), e.g.
-    `shop.view_order` to list orders, and an object if the permissions table's
+    `shop.view_order` to list orders, and an object if the action permission's
     entry of that permission allows it (`get_perm_info`, `abac.allowed`)."""
 
     detail_access_actions = ["retrieve", "info"]  # view actions to check for detail access
@@ -111,16 +111,16 @@ class BaseActionModelPermission(rest_permissions.BasePermission):
         return f"{model_meta.app_label}.{operation}_{model_meta.model_name}"
 
     def get_perm_info(self, perm_code) -> dict | None:
-        """The permissions table's entry of `perm_code` (`table.perm_info`): its 'abac',
-        'rules', 'no_detail' and 'staff', or None when the table doesn't list it."""
-        return table.perm_info(perm_code)
+        """The entry of `perm_code` (`entries.perm_info`): its 'abac', 'predicates',
+        'no_detail' and 'staff', or None when it isn't an action permission."""
+        return entries.perm_info(perm_code)
 
     def user(self, request):
         return request.user
 
     def manager_user(self, user):
         """The user whose rights a member of a 'staff' group acts with; needed only
-        by permission table entries that list 'staff' groups."""
+        by the entries that list 'staff' groups."""
         raise NotImplementedError(f"{type(self).__name__} must implement manager_user()")
 
     def has_detail_access_permission(self, request, view, user=None, perm_info=None):

@@ -1,6 +1,6 @@
-"""Setup: the permissions table and its predicates, written to the database.
+"""Setup: the permission definitions and their predicates, written to the database.
 
-The table maps a Django permission string as `user.has_perm()` takes it ("app_label.codename") to its entry:
+The definitions map a Django permission string as `user.has_perm()` takes it ("app_label.codename") to its entry:
 
 - `rbac`: the groups granted the permission (`Group.permissions`);
 - `abac`: `{group: ruleset}`, the predicates the group's objects must pass, composed with `&`, `|`, `~` (see
@@ -14,8 +14,8 @@ and the definitions given as `rules` (`{code: {"fqn", "description"?}}`, e.g. a 
 
 from django.db import transaction
 
+from .entries import entry_codes, invalidate_on_commit
 from .predicates import NamedPredicate, Ruleset, canonical, discover
-from .table import invalidate_on_commit
 from .utils import rule_error
 
 SECTIONS = ("rbac", "abac", "no_detail", "staff")
@@ -97,17 +97,18 @@ def _validate_entry(perm_code: str, item: dict, groups: set[str], resolve) -> di
     return {"rbac": rbac, "abac": abac, "no_detail": no_detail, "staff": staff}
 
 
-def setup_rbac_permissions(permissions_table, group_names, rules=None, keep=False) -> dict:
-    """Write the table and its predicates to the database, in one transaction.
+def setup_rbac_permissions(definitions, group_names, rules=None, keep=False) -> dict:
+    """Write the permission definitions and their predicates to the database, in one transaction: each permission
+    they list becomes an action permission.
 
     The predicates registered in the installed apps' `rules` modules, and those `rules` defines, are stored. The
-    groups in `group_names` are created if missing and get the permissions the table grants them; each entry's
+    groups in `group_names` are created if missing and get the permissions the definitions grant them; each entry's
     rulesets, `no_detail` and `staff` replace what the database had for it, the rulesets in their canonical form.
-    Unless `keep`, the groups lose any other permission, and the entries the table no longer lists, and the
-    predicates no longer defined and unused, are removed. A table that names a group not in `group_names`, gives a
+    Unless `keep`, the groups lose any other permission, and the entries the definitions no longer list, and the
+    predicates no longer defined and unused, are removed. Definitions that name a group not in `group_names`, gives a
     ruleset to a group its `rbac` doesn't grant, or has a ruleset that doesn't parse or names an unknown predicate,
     or a predicate whose function doesn't import, is a `ValueError`, raised before anything is written. The cached
-    table is dropped once the transaction commits.
+    entries it may have changed are dropped once the transaction commits.
 
     Returns the counts written: `{"permissions", "rules", "groups"}`.
     """
@@ -117,12 +118,12 @@ def setup_rbac_permissions(permissions_table, group_names, rules=None, keep=Fals
     from .models import ActionPermission, ActionPermissionGroup, ActionPermissionRule
 
     groups = set(group_names)
-    definitions = _definitions(rules or {})
+    predicate_definitions = _definitions(rules or {})
     known = dict(ActionPermissionRule.objects.values_list("code", "fqn"))
-    known.update({code: definition["fqn"] for code, definition in definitions.items()})
+    known.update({code: definition["fqn"] for code, definition in predicate_definitions.items()})
     references = {code: NamedPredicate(code, fqn) for code, fqn in known.items()}
     entries = {}
-    for perm_code, item in permissions_table.items():
+    for perm_code, item in definitions.items():
         app_label, _, codename = perm_code.partition(".")
         try:
             permission = Permission.objects.get(content_type__app_label=app_label, codename=codename)
@@ -131,12 +132,15 @@ def setup_rbac_permissions(permissions_table, group_names, rules=None, keep=Fals
         entries[perm_code] = (permission, _validate_entry(perm_code, item, groups, references.__getitem__))
 
     with transaction.atomic():
+        # the entries setup may change: those it writes, and those already stored (removed, or using a predicate
+        # whose definition it updates); their cached copies are dropped once it commits
+        touched = set(entries) | entry_codes(ActionPermission.objects.all())
         group_objects = {}
         for name in group_names:
             group_objects[name], _created = Group.objects.get_or_create(name=name)
             if not keep:
                 group_objects[name].permissions.clear()
-        for code, definition in definitions.items():
+        for code, definition in predicate_definitions.items():
             ActionPermissionRule.objects.update_or_create(code=code, defaults=definition)
 
         for permission, entry in entries.values():
@@ -153,6 +157,6 @@ def setup_rbac_permissions(permissions_table, group_names, rules=None, keep=Fals
         if not keep:
             listed = [permission for permission, _entry in entries.values()]
             ActionPermission.objects.exclude(permission__in=listed).delete()
-            ActionPermissionRule.objects.exclude(code__in=definitions).filter(usages__isnull=True).delete()
-        invalidate_on_commit(strict=True)
-    return {"permissions": len(entries), "rules": len(definitions), "groups": len(group_objects)}
+            ActionPermissionRule.objects.exclude(code__in=predicate_definitions).filter(usages__isnull=True).delete()
+        invalidate_on_commit(touched, strict=True)
+    return {"permissions": len(entries), "rules": len(predicate_definitions), "groups": len(group_objects)}

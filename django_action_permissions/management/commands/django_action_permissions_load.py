@@ -4,7 +4,10 @@ from django_action_permissions.yaml_io import YAMLNotInstalled, load_yaml
 
 
 class Command(BaseCommand):
-    help = "Set up the permissions table and its rules from a YAML document (see django_action_permissions.yaml_io)."
+    help = (
+        "Set up the permission definitions and their predicates from a YAML document "
+        "(see django_action_permissions.yaml_io)."
+    )
     requires_migrations_checks = True
 
     def add_arguments(self, parser):

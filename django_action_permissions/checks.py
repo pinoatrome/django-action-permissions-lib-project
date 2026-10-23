@@ -1,5 +1,5 @@
-"""System checks: the settings (every `manage.py` command) and the stored table (`manage.py check --database
-default`, and the admin's Check configuration).
+"""System checks: the settings (every `manage.py` command) and the stored action permissions (`manage.py check
+--database default`, and the admin's Check configuration).
 
 The default permission is checked against what runs: with DRF, the views' default permission classes (W004);
 without it, Django has no permission classes, and `DEFAULT_PERMISSION` only names the policy of the built-in
@@ -163,7 +163,7 @@ def check_table(app_configs=None, databases=None, **kwargs) -> list[checks.Check
             if not ActionPermission.objects.using(alias).exists():
                 issues.append(
                     checks.Warning(
-                        "The permissions table is empty: no group holds a permission on any object.",
+                        "There is no action permission: no group holds a permission on any object.",
                         hint="Run the setup (setup_rbac_permissions, or the django_action_permissions_load command).",
                         id=f"{ID}.W002",
                     )

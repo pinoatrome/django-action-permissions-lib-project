@@ -1,4 +1,4 @@
-"""The permissions table and its predicates as one YAML document, loaded by setup and exported from the database:
+"""The permission definitions and their predicates as one YAML document, loaded by setup and exported from the database:
 
     groups: [CLERKS, CUSTOMERS]
     rules:  # optional: the registered predicates (@predicate) are stored anyway
@@ -57,8 +57,8 @@ def _strings(value, path: str) -> list[str]:
 
 
 def parse_document(document) -> tuple[dict, list[str], dict]:
-    """(table, group names, rules) of a parsed YAML document, as `setup_rbac_permissions` takes them. A document of
-    the wrong shape is a `ValueError` naming where (e.g. `permissions.shop.view_order.abac`)."""
+    """(definitions, group names, rules) of a parsed YAML document, as `setup_rbac_permissions` takes them. A
+    document of the wrong shape is a `ValueError` naming where (e.g. `permissions.shop.view_order.abac`)."""
     document = _expect(document if document is not None else {}, dict, "document")
     unknown = set(document) - {"groups", "rules", "permissions"}
     if unknown:
@@ -67,7 +67,7 @@ def parse_document(document) -> tuple[dict, list[str], dict]:
     rules = {}
     for code, definition in _expect(_get(document, "rules", {}), dict, "rules").items():
         rules[code] = _expect(definition, dict, f"rules.{code}")
-    table = {}
+    definitions = {}
     for perm_code, entry in _expect(_get(document, "permissions", {}), dict, "permissions").items():
         path = f"permissions.{perm_code}"
         entry = dict(_expect(entry if entry is not None else {}, dict, path))
@@ -87,12 +87,12 @@ def parse_document(document) -> tuple[dict, list[str], dict]:
             _expect(ruleset, str, f"{path}.abac.{group}")
         for section in ("no_detail", "staff"):
             _strings(_get(entry, section, []), f"{path}.{section}")
-        table[perm_code] = entry
-    return table, groups, rules
+        definitions[perm_code] = entry
+    return definitions, groups, rules
 
 
 def load_yaml(stream, keep: bool = False) -> dict:
-    """Set up the table and the rules of the YAML document in `stream` (a string or a file); see
+    """Set up the permission definitions and the predicates of the YAML document in `stream` (a string or a file); see
     `setup_rbac_permissions`, whose counts it returns. A YAML error or a document of the wrong shape is a
     `ValueError`, and nothing is written."""
     yaml = _yaml()
@@ -100,13 +100,13 @@ def load_yaml(stream, keep: bool = False) -> dict:
         document = yaml.safe_load(stream)
     except yaml.YAMLError as e:
         raise ValueError(f"not a YAML document: {e}") from None
-    table, groups, rules = parse_document(document)
-    return setup_rbac_permissions(table, groups, rules=rules, keep=keep)
+    definitions, groups, rules = parse_document(document)
+    return setup_rbac_permissions(definitions, groups, rules=rules, keep=keep)
 
 
 def export_document(queryset=None) -> dict:
-    """The stored table as a document: the entries of `queryset` (all when None), their rulesets in the canonical
-    form, the definitions of the predicates they use, and the groups they name. Groups the table doesn't touch are
+    """The stored action permissions as a document: the entries of `queryset` (all when None), their rulesets in the
+    canonical form, the definitions of the predicates they use, and the groups they name. Groups they don't name are
     left out."""
     from .models import ActionPermission, ActionPermissionRule
     from .predicates import codes_of
@@ -136,8 +136,8 @@ def export_document(queryset=None) -> dict:
 
 
 def dump_yaml(stream=None, queryset=None) -> str | None:
-    """The stored table as YAML (see `export_document`): written to `stream`, or returned when None. Keys are
-    sorted and the rulesets canonical, so two exports of the same table are identical."""
+    """The stored action permissions as YAML (see `export_document`): written to `stream`, or returned when None.
+    Keys are sorted and the rulesets canonical, so two exports of the same action permissions are identical."""
     yaml = _yaml()
     return yaml.safe_dump(
         export_document(queryset), stream, sort_keys=True, allow_unicode=True, default_flow_style=False

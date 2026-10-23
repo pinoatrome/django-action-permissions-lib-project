@@ -1,4 +1,4 @@
-"""Plain Django views guarded by the permissions table (no Django REST framework needed): the counterparts of Django's
+"""Plain Django views guarded by the action permissions (no Django REST framework needed): the counterparts of Django's
 `permission_required` and `PermissionRequiredMixin`, built on `abac.unrestricted` and `abac.allowed`.
 
 - `permission_required(perm, get_object=None)`: a view decorator. Without `get_object`, the user must hold the
@@ -51,7 +51,7 @@ def permission_required(
     login_url=None,
     redirect_field_name=REDIRECT_FIELD_NAME,
 ):
-    """Guard a view with the permissions table.
+    """Guard a view with the action permissions.
 
     `perm` is a permission string ("app_label.codename") or several, all required. Without `get_object`, the user
     must hold them on any object (`unrestricted`); with `get_object(request, *args, **kwargs)`, on the object it
@@ -97,12 +97,12 @@ def permission_required(
 
 
 class PermissionRequiredMixin(AccessMixin):
-    """A class-based view guarded by the permissions table, in place of Django's `PermissionRequiredMixin`.
+    """A class-based view guarded by the action permissions, in place of Django's `PermissionRequiredMixin`.
 
     `dispatch` lets in a user holding `permission_required` (all of them, when several): through a group with or
     without a ruleset, so a user restricted to their own objects gets in; with `permission_unrestricted = True`,
     only one holding them on any object. `get_object()` (put it before `DetailView`, `UpdateView`, `DeleteView`...)
-    refuses an object the table doesn't allow the user: 404 when they can't read it either, else 403
+    refuses an object the rulesets don't allow the user: 404 when they can't read it either, else 403
     (`not_found_when_unreadable = False`: 403). Define `manager_user(user)` for `staff` groups.
     An anonymous visitor goes to the login page; a signed-in user who may not gets 403 (`AccessMixin`).
     """

@@ -4,7 +4,7 @@ from django_action_permissions.yaml_io import YAMLNotInstalled, dump_yaml
 
 
 class Command(BaseCommand):
-    help = "Export the stored permissions table and its rules as a YAML document."
+    help = "Export the stored action permissions and their predicates as a YAML document."
 
     def add_arguments(self, parser):
         parser.add_argument("-o", "--output", help="the file to write (default: standard output)")

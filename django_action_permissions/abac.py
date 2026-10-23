@@ -1,8 +1,10 @@
-"""The object checks of the permissions table, in a view (`BaseActionModelPermission.has_object_permission`) or
+"""The object checks of the action permissions, in a view (`BaseActionModelPermission.has_object_permission`) or
 outside one (pages, filters).
 
 - `unrestricted(user, perm_code)`: the user holds the permission on any object.
 - `allowed(user, perm_code, obj)`: the user may use the permission on `obj`.
+- `held_permissions(user)`: every action permission the user holds, and whether on any object, in two queries
+  (what a profile or a menu asks; the checks above read only their own permission's entry).
 
 A user holds a permission through their groups (`rbac`); a group that has a ruleset for it (`abac`) holds it only
 on the objects the ruleset allows. Every group holding the permission is evaluated (in name order): a rule raising
@@ -16,7 +18,7 @@ import logging
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404
 
-from . import table
+from . import entries
 from .backends import get_rules_backend
 
 logger = logging.getLogger(__name__)
@@ -30,7 +32,7 @@ except ImportError:
 else:
     BLOCKS += (DRFPermissionDenied,)
 
-_LOAD = object()  # `perm_info` not given: read from the table
+_LOAD = object()  # `perm_info` not given: read the permission's entry
 
 
 def granting_groups(user, perm_code: str) -> list[str]:
@@ -49,8 +51,8 @@ def _restricted(info: dict, group: str) -> bool:
 
 def unrestricted(user, perm_code: str, perm_info=_LOAD) -> bool:
     """Whether `user` holds `perm_code` on any object: a superuser, a permission given to the user directly, or a
-    group of theirs holding it without a ruleset for it. A permission the table doesn't list is held
-    on no object through a group (until setup has run, no group is unrestricted)."""
+    group of theirs holding it without a ruleset for it. A permission that isn't an action permission is held on no
+    object through a group (until setup has run, no group is unrestricted)."""
     if not user.is_authenticated or not user.has_perm(perm_code):
         return False
     if user.is_superuser:
@@ -58,11 +60,57 @@ def unrestricted(user, perm_code: str, perm_info=_LOAD) -> bool:
     app_label, _, codename = perm_code.partition(".")
     if user.user_permissions.filter(content_type__app_label=app_label, codename=codename).exists():
         return True
-    info = table.perm_info(perm_code) if perm_info is _LOAD else perm_info
+    info = entries.perm_info(perm_code) if perm_info is _LOAD else perm_info
     if info is None:
-        logger.warning(f"{perm_code}: not in the permissions table, no group holds it on any object")
+        logger.warning(f"{perm_code}: not an action permission, no group holds it on any object")
         return False
     return any(not _restricted(info, group) for group in granting_groups(user, perm_code))
+
+
+def held_permissions(user) -> dict[str, bool]:
+    """The action permissions `user` holds, each with whether they hold it on any object (as `unrestricted`
+    answers), filtered in the database: the grants of the user's groups, each with whether that group has a ruleset
+    for the permission, and the permissions given to the user directly. An anonymous or inactive user holds none, a
+    superuser every action permission on any object."""
+    from django.contrib.auth.models import Group, Permission
+    from django.db.models import Exists, OuterRef
+
+    from .models import ActionPermissionGroup
+
+    if not user.is_authenticated or not user.is_active:
+        return {}
+    code = ("permission__content_type__app_label", "permission__codename")
+    if user.is_superuser:
+        rows = Permission.objects.filter(action_permission__isnull=False)
+        return {
+            f"{app_label}.{codename}": True
+            for app_label, codename in rows.values_list("content_type__app_label", "codename")
+        }
+    grants = (
+        Group.permissions.through.objects.filter(
+            group__in=user.groups.all(), permission__action_permission__isnull=False
+        )
+        .annotate(
+            restricted=Exists(
+                ActionPermissionGroup.objects.filter(
+                    action_permission__permission=OuterRef("permission"), group=OuterRef("group")
+                )
+            )
+        )
+        .values_list(*code, "restricted")
+    )
+    held = {}
+    for app_label, codename, restricted in grants:
+        perm_code = f"{app_label}.{codename}"
+        held[perm_code] = held.get(perm_code, False) or not restricted
+    direct = user.user_permissions.filter(action_permission__isnull=False)
+    held.update(
+        {
+            f"{app_label}.{codename}": True
+            for app_label, codename in direct.values_list("content_type__app_label", "codename")
+        }
+    )
+    return held
 
 
 def allowed(user, perm_code: str, obj=None, *, manager_user=None, perm_info=_LOAD, raise_blocks=False) -> bool:
@@ -70,12 +118,12 @@ def allowed(user, perm_code: str, obj=None, *, manager_user=None, perm_info=_LOA
 
     Unrestricted, or else each group holding the permission evaluates its ruleset through the rules backend: a
     `PermissionDenied` blocks, else one group allowing is enough, else the backend's `default_allows` decides when a
-    group's ruleset didn't (`None`). A `staff` group's ruleset is
-    run for `manager_user(user)`; without `manager_user`, a staff group allows nothing. A permission the table
-    doesn't list is left to `user.has_perm(perm_code, obj)` (Django's object permission backends). With
+    group's ruleset didn't (`None`). A `staff` group's ruleset is run for `manager_user(user)`; without
+    `manager_user`, a staff group allows nothing. A permission that isn't an action permission is left to
+    `user.has_perm(perm_code, obj)` (Django's object permission backends). With
     `raise_blocks`, a block is raised as Django's `PermissionDenied` instead of answered `False` (the auth backend's
     way of stopping the backends after it)."""
-    info = table.perm_info(perm_code) if perm_info is _LOAD else perm_info
+    info = entries.perm_info(perm_code) if perm_info is _LOAD else perm_info
     if unrestricted(user, perm_code, perm_info=info):
         return True
     if obj is None or not user.has_perm(perm_code):

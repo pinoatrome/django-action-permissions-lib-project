@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import ProtectedError
 
 from django_action_permissions.models import ActionPermission, ActionPermissionGroup, ActionPermissionRule
-from django_action_permissions.table import read_table
+from tests.conftest import stored_entries
 
 pytestmark = pytest.mark.django_db
 
@@ -70,7 +70,7 @@ def test_deleting_a_group_removes_it_from_the_table(setup):
 
     Group.objects.filter(name__in=["CLERKS", "CUSTOMERS"]).delete()
 
-    entry = read_table()["auth.change_user"]
+    entry = stored_entries()["auth.change_user"]
     assert (entry["no_detail"], entry["abac"]) == ([], {"BOSSES": "owner & yes"})
 
 

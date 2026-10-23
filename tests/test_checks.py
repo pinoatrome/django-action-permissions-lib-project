@@ -1,4 +1,4 @@
-"""The system checks: the settings, and the stored table (database checks)."""
+"""The system checks: the settings, and the stored action permissions (database checks)."""
 
 import pytest
 from django.contrib.auth.models import Group

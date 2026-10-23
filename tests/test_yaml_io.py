@@ -11,7 +11,6 @@ from django.core.management import CommandError, call_command
 
 from django_action_permissions.models import ActionPermission, ActionPermissionGroup, ActionPermissionRule
 from django_action_permissions.predicates import discover
-from django_action_permissions.table import read_table
 from django_action_permissions.yaml_io import (
     YAMLNotInstalled,
     dump_yaml,
@@ -20,6 +19,7 @@ from django_action_permissions.yaml_io import (
     parse_document,
     yaml_available,
 )
+from tests.conftest import stored_entries
 
 pytestmark = pytest.mark.django_db
 
@@ -52,7 +52,7 @@ def test_a_document_is_set_up_as_setup_would():
     counts = load_yaml(DOCUMENT)
 
     assert counts == {"permissions": 2, "rules": PREDICATES, "groups": 3}
-    entry = read_table()["auth.change_user"]
+    entry = stored_entries()["auth.change_user"]
     assert entry["abac"] == {"CUSTOMERS": "owner & ~no | is_staff", "BOSSES": "yes | abstain"}
     assert (entry["no_detail"], entry["staff"]) == (["CLERKS"], ["BOSSES"])
     assert ActionPermissionRule.objects.get(code="owner").description == "The object is the user's"
@@ -193,7 +193,7 @@ def test_the_load_command_sets_up_a_file(tmp_path):
 
     call_command("django_action_permissions_load", str(path), stdout=out)
     assert out.getvalue().strip() == f"2 permissions, {PREDICATES} rules, 3 groups set up"
-    assert set(read_table()) == {"auth.change_user", "auth.view_user"}
+    assert set(stored_entries()) == {"auth.change_user", "auth.view_user"}
 
     call_command("django_action_permissions_load", str(path), "--keep", stdout=out)
     assert "(keep)" in out.getvalue()

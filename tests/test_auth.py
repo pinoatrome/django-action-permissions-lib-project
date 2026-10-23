@@ -1,4 +1,4 @@
-"""The optional auth backend: `user.has_perm(perm, obj)` answered by the table."""
+"""The optional auth backend: `user.has_perm(perm, obj)` answered by the rulesets."""
 
 import pytest
 from django.contrib.auth.models import Permission

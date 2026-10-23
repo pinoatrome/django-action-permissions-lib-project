@@ -1,4 +1,4 @@
-"""Predicates and rulesets: the rules of the permissions table on an object.
+"""Predicates and rulesets: the rules of the action permissions on an object.
 
 A predicate is a function `(user, obj) -> bool | None` (the `Predicate` protocol): `True` or `False`, `None` when it
 doesn't apply, or it raises `PermissionDenied` (Django's, or DRF's), which blocks. `@predicate` makes a function

@@ -7,10 +7,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from django_action_permissions import admin as action_admin
-from django_action_permissions import table
+from django_action_permissions import entries
 from django_action_permissions.models import ActionPermission, ActionPermissionGroup, ActionPermissionRule
 from django_action_permissions.predicates import discover
 from django_action_permissions.yaml_io import dump_yaml
+from tests.conftest import stored_entries
 from tests.test_yaml_io import DOCUMENT
 
 pytestmark = pytest.mark.django_db
@@ -73,7 +74,8 @@ def test_an_entry_is_edited_on_one_page_rbac_and_rules_included(
 ):
     settings.ACTION_PERMISSIONS = {}  # the cached table, dropped by the admin's save
     caches["default"].clear()
-    table.load_table()
+    entries.perm_info("auth.view_user")
+    entries.perm_info("auth.change_user")
     entry = ActionPermission.objects.get(permission__codename="view_user")
     bosses, clerks = Group.objects.get(name="BOSSES"), Group.objects.get(name="CLERKS")
     row = entry.group_rules.get()
@@ -100,8 +102,9 @@ def test_an_entry_is_edited_on_one_page_rbac_and_rules_included(
 
     assert response.status_code == 302, response.content.decode()
     assert set(entry.permission.group_set.values_list("name", flat=True)) == {"BOSSES", "CLERKS"}
-    assert caches["default"].get(table.CACHE_KEY) is None
-    info = table.perm_info("auth.view_user")
+    assert caches["default"].get(entries._key("auth.view_user")) is None  # the entry edited is dropped ...
+    assert caches["default"].get(entries._key("auth.change_user")) is not None  # ... and only that one
+    info = entries.perm_info("auth.view_user")
     assert info["abac"] == {"CLERKS": "yes", "BOSSES": "owner | is_staff"}  # canonical
     assert info["staff"] == ["BOSSES"]
     assert {rule.code for rule in ActionPermissionGroup.objects.get(group=bosses).rules.all()} == {"owner", "is_staff"}
@@ -173,7 +176,7 @@ def test_loading_a_document_sets_it_up(admin_client, db):
 
     assert response.redirect_chain[-1][0] == reverse(CHANGELIST)
     assert f"2 permissions, {len(discover())} rules, 3 groups set up." in response.content.decode()
-    assert set(table.read_table()) == {"auth.change_user", "auth.view_user"}
+    assert set(stored_entries()) == {"auth.change_user", "auth.view_user"}
 
 
 def test_a_bad_document_is_shown_and_nothing_is_written(admin_client, db):

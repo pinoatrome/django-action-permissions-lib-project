@@ -5,9 +5,8 @@ from django_action_permissions import rules as builtin
 from django_action_permissions.models import ActionPermission, ActionPermissionGroup, ActionPermissionRule
 from django_action_permissions.predicates import discover
 from django_action_permissions.rbac import setup_rbac_permissions
-from django_action_permissions.table import read_table
 from tests import rules
-from tests.conftest import GROUPS
+from tests.conftest import GROUPS, stored_entries
 
 pytestmark = pytest.mark.django_db
 
@@ -106,7 +105,7 @@ def test_setup_stores_the_discovered_predicates(setup):
 def test_setup_stores_the_rulesets_in_their_canonical_form(setup):
     setup(FULL)
 
-    assert read_table() == {
+    assert stored_entries() == {
         "auth.change_user": {
             "abac": {"CUSTOMERS": "owner & ~block | is_staff", "BOSSES": "yes & (abstain | is_self)"},
             "predicates": {
@@ -141,7 +140,7 @@ def test_a_rerun_replaces_an_entry(setup):
     setup(FULL)
     setup({"auth.change_user": {"rbac": {"CUSTOMERS"}, "abac": {"CUSTOMERS": "yes"}, "staff": ["CLERKS"]}})
 
-    entry = read_table()["auth.change_user"]
+    entry = stored_entries()["auth.change_user"]
     assert (entry["abac"], entry["no_detail"], entry["staff"]) == ({"CUSTOMERS": "yes"}, [], ["CLERKS"])
 
 
@@ -149,10 +148,10 @@ def test_entries_left_out_are_removed_unless_kept(setup):
     setup(FULL)
 
     setup({"auth.view_user": {"rbac": {"CLERKS"}}}, keep=True)
-    assert set(read_table()) == {"auth.change_user", "auth.view_user"}
+    assert set(stored_entries()) == {"auth.change_user", "auth.view_user"}
 
     setup({"auth.view_user": {"rbac": {"CLERKS"}}})
-    assert set(read_table()) == {"auth.view_user"}
+    assert set(stored_entries()) == {"auth.view_user"}
 
 
 def test_a_definition_no_predicate_registers_any_more_is_removed_unless_kept_or_used(setup):

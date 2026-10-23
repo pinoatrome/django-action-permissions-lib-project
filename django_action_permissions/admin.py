@@ -1,5 +1,6 @@
-"""The admin: every model of the table editable (an entry on one page, with its rbac groups and its group rules),
-and on the entries' list the configuration tools: Load YAML (superusers), Export YAML, Check configuration."""
+"""The admin: every model of the action permissions editable (an entry on one page, with its rbac groups and its
+groups' rulesets), and on the entries' list the configuration tools: Load YAML (superusers), Export YAML, Check
+configuration."""
 
 from django import forms
 from django.contrib import admin, messages
@@ -169,7 +170,8 @@ class ActionPermissionAdmin(admin.ModelAdmin):
         return redirect(self._changelist_url())
 
     def load_view(self, request):
-        """Set up the table from an uploaded YAML document. Superusers only: it rewrites the groups' permissions."""
+        """Set up the permission definitions of an uploaded YAML document. Superusers only: it rewrites the groups'
+        permissions."""
         if not request.user.is_superuser:
             raise PermissionDenied
         if not yaml_available():

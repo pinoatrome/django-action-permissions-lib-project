@@ -4,7 +4,7 @@ from django.contrib.auth.models import Group, Permission
 from django_action_permissions import rules as builtin
 from django_action_permissions.models import ActionPermission, ActionPermissionGroup, ActionPermissionRule
 from django_action_permissions.predicates import discover
-from django_action_permissions.rbac import setup_rbac_permissions
+from django_action_permissions.rbac import setup_rbac_permissions, store_predicates
 from tests import rules
 from tests.conftest import GROUPS, stored_entries
 
@@ -223,3 +223,23 @@ def test_a_predicate_defined_where_it_cant_be_imported_is_refused(setup, registr
     with pytest.raises(ValueError, match="rule 'local'.*top level"):
         setup(TABLE)
     assert nothing_written()
+
+
+def test_storing_the_predicates_leaves_the_entries_alone(setup):
+    setup(FULL)
+    entries = stored_entries()
+    ActionPermissionRule.objects.filter(code="yes").update(fqn="tests.rules.no", description="")
+    ActionPermissionRule.objects.filter(code="always").delete()
+
+    assert store_predicates() == len(discover())
+
+    assert ActionPermissionRule.objects.get(code="yes").fqn == "tests.rules.yes"
+    assert ActionPermissionRule.objects.filter(code="always").exists()
+    assert stored_entries() == entries
+
+
+def test_storing_a_predicate_that_doesnt_import_writes_nothing(db):
+    with pytest.raises(ValueError, match="rule 'gone'"):
+        store_predicates({"gone": {"fqn": "tests.rules.gone"}})
+
+    assert not ActionPermissionRule.objects.exists()

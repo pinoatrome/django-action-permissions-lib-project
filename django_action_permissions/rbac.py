@@ -97,6 +97,28 @@ def _validate_entry(perm_code: str, item: dict, groups: set[str], resolve) -> di
     return {"rbac": rbac, "abac": abac, "no_detail": no_detail, "staff": staff}
 
 
+def _write_predicates(definitions: dict[str, dict]) -> None:
+    from .models import ActionPermissionRule
+
+    for code, definition in definitions.items():
+        ActionPermissionRule.objects.update_or_create(code=code, defaults=definition)
+
+
+def store_predicates(rules=None) -> int:
+    """Store the predicates registered in the installed apps' `rules` modules, and those `rules` defines, without
+    touching the entries (what setup does first). A definition whose function doesn't import is a `ValueError`,
+    raised before anything is written. The cached entries using a predicate it updates are dropped once it commits.
+
+    Returns the number of predicates written."""
+    from .models import ActionPermission
+
+    definitions = _definitions(rules or {})
+    with transaction.atomic():
+        _write_predicates(definitions)
+        invalidate_on_commit(entry_codes(ActionPermission.objects.filter(group_rules__rules__code__in=definitions)))
+    return len(definitions)
+
+
 def setup_rbac_permissions(definitions, group_names, rules=None, keep=False) -> dict:
     """Write the permission definitions and their predicates to the database, in one transaction: each permission
     they list becomes an action permission.
@@ -140,8 +162,7 @@ def setup_rbac_permissions(definitions, group_names, rules=None, keep=False) -> 
             group_objects[name], _created = Group.objects.get_or_create(name=name)
             if not keep:
                 group_objects[name].permissions.clear()
-        for code, definition in predicate_definitions.items():
-            ActionPermissionRule.objects.update_or_create(code=code, defaults=definition)
+        _write_predicates(predicate_definitions)
 
         for permission, entry in entries.values():
             for name in entry["rbac"]:

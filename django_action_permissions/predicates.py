@@ -20,6 +20,7 @@ The registry holds what the code defines, the same in every process: it isn't sh
 import inspect
 import logging
 import re
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Protocol, runtime_checkable
 
@@ -38,6 +39,23 @@ class Predicate(Protocol):
 
 def _answer(value) -> bool | None:
     return None if value is None else bool(value)
+
+
+@dataclass
+class TraceNode:
+    """A node of a ruleset's evaluation (`Ruleset.trace`): a predicate (`label` its code) or an operator (`label` its
+    symbol, `children` its operands). `evaluated` is False for an operand the evaluation skipped (`&` stops at the
+    first `False`, `|` at the first `True`); `blocked` holds what a blocking exception said, `error` why a predicate
+    can't be imported (it answers `False`)."""
+
+    kind: str  # "predicate", "all", "any" or "not"
+    label: str
+    answer: bool | None = None
+    evaluated: bool = True
+    blocked: str | None = None
+    error: str | None = None
+    description: str = ""
+    children: list["TraceNode"] = field(default_factory=list)
 
 
 def _ruleset(value) -> "Ruleset":
@@ -65,6 +83,16 @@ class Ruleset:
 
     def codes(self) -> set[str]:
         """The codes of the predicates it uses."""
+        raise NotImplementedError
+
+    def trace(self, user, obj, /, blocks=()) -> TraceNode:
+        """The evaluation `__call__` makes, as a tree of `TraceNode`: the same answers, the predicates called in the
+        same order, the operands it skips marked not evaluated. An exception of `blocks` is recorded where it's
+        raised and stops the evaluation, as `__call__` lets it through; any other goes through."""
+        raise NotImplementedError
+
+    def skipped(self) -> TraceNode:
+        """The tree of the ruleset, not evaluated."""
         raise NotImplementedError
 
     def _operand(self, operand: "Ruleset") -> str:
@@ -99,6 +127,25 @@ class NamedPredicate(Ruleset):
         logger.debug(f"predicate {self.code!r} on {obj!r} for {user}: {answer}")
         return answer
 
+    def trace(self, user, obj, /, blocks=()):
+        node = self.skipped()
+        node.evaluated = True
+        function = self.function
+        if function is None:
+            try:
+                function = self.function = import_rule(self.fqn)
+            except (ImportError, TypeError) as e:
+                node.answer, node.error = False, str(e)
+                return node
+        try:
+            node.answer = _answer(function(user, obj))
+        except blocks as e:
+            node.blocked = str(e) or type(e).__name__
+        return node
+
+    def skipped(self):
+        return TraceNode("predicate", self.code, evaluated=False, description=self.description)
+
     def codes(self):
         return {self.code}
 
@@ -107,7 +154,8 @@ class NamedPredicate(Ruleset):
 
 
 class _Operator(Ruleset):
-    symbol = ""
+    symbol, kind = "", ""
+    decisive: bool  # the answer of an operand that decides: the evaluation stops there
 
     def __init__(self, *operands: Ruleset):
         flat = []
@@ -118,12 +166,34 @@ class _Operator(Ruleset):
     def codes(self):
         return set().union(*(operand.codes() for operand in self.operands))
 
+    def trace(self, user, obj, /, blocks=()):
+        node = TraceNode(self.kind, self.symbol.strip())
+        stopped = False
+        for operand in self.operands:
+            if stopped:
+                node.children.append(operand.skipped())
+                continue
+            child = operand.trace(user, obj, blocks)
+            node.children.append(child)
+            if child.blocked is not None:
+                node.answer, node.blocked, stopped = None, child.blocked, True
+            elif child.answer is self.decisive:
+                node.answer, stopped = self.decisive, True
+            elif child.answer is not None:
+                node.answer = not self.decisive
+        return node
+
+    def skipped(self):
+        return TraceNode(
+            self.kind, self.symbol.strip(), evaluated=False, children=[operand.skipped() for operand in self.operands]
+        )
+
     def __str__(self):
         return self.symbol.join(self._operand(operand) for operand in self.operands)
 
 
 class AllOf(_Operator):
-    symbol, precedence = " & ", 2
+    symbol, kind, precedence, decisive = " & ", "all", 2, False
 
     def __call__(self, user, obj, /):
         answer = None
@@ -137,7 +207,7 @@ class AllOf(_Operator):
 
 
 class AnyOf(_Operator):
-    symbol, precedence = " | ", 1
+    symbol, kind, precedence, decisive = " | ", "any", 1, True
 
     def __call__(self, user, obj, /):
         answer = None
@@ -160,6 +230,15 @@ class Not(Ruleset):
 
     def codes(self):
         return self.operand.codes()
+
+    def trace(self, user, obj, /, blocks=()):
+        child = self.operand.trace(user, obj, blocks)
+        node = TraceNode("not", "~", children=[child], blocked=child.blocked)
+        node.answer = None if child.answer is None or child.blocked is not None else not child.answer
+        return node
+
+    def skipped(self):
+        return TraceNode("not", "~", evaluated=False, children=[self.operand.skipped()])
 
     def __str__(self):
         return f"~{self._operand(self.operand)}"
@@ -201,6 +280,16 @@ def discover() -> dict[str, NamedPredicate]:
 
 # ── the expressions ──────────────────────────────────────────────────────────
 
+
+class RulesetSyntaxError(ValueError):
+    """An expression that doesn't parse: `position` is where (an index into it), `token` what was found there
+    (None at the end)."""
+
+    def __init__(self, message: str, position: int, token: str | None = None):
+        super().__init__(message)
+        self.position, self.token = position, token
+
+
 _TOKEN = re.compile(r"(?P<space>\s+)|(?P<name>[A-Za-z_]\w*)|(?P<op>[&|~()])|(?P<bad>.)")
 
 
@@ -209,7 +298,9 @@ def _tokens(expression: str) -> list[tuple[str, int]]:
     tokens = []
     for match in _TOKEN.finditer(expression):
         if match.lastgroup == "bad":
-            raise ValueError(f"{expression!r}: unexpected {match.group()!r} at {match.start()}")
+            raise RulesetSyntaxError(
+                f"{expression!r}: unexpected {match.group()!r} at {match.start()}", match.start(), match.group()
+            )
         if match.lastgroup != "space":
             tokens.append((match.group(), match.start()))
     return tokens
@@ -225,10 +316,11 @@ def codes_of(expression: str) -> set[str]:
 
 def parse(expression: str, resolve) -> Ruleset:
     """The ruleset an expression writes, its codes given by `resolve(code) -> NamedPredicate` (`KeyError` for an
-    unknown one). A malformed expression or an unknown code is a `ValueError` saying where."""
+    unknown one). A malformed expression or an unknown code is a `RulesetSyntaxError` (a `ValueError`) saying
+    where."""
     tokens = _tokens(expression)
     if not tokens:
-        raise ValueError("an empty ruleset")
+        raise RulesetSyntaxError("an empty ruleset", 0)
     index = 0
 
     def peek():
@@ -236,8 +328,9 @@ def parse(expression: str, resolve) -> Ruleset:
 
     def fail(what):
         at = tokens[index][1] if index < len(tokens) else len(expression)
-        token = repr(tokens[index][0]) if index < len(tokens) else "the end"
-        raise ValueError(f"{expression!r}: {what} {token} at {at}")
+        token = tokens[index][0] if index < len(tokens) else None
+        found = "the end" if token is None else repr(token)
+        raise RulesetSyntaxError(f"{expression!r}: {what} {found} at {at}", at, token)
 
     def any_of():
         nonlocal index

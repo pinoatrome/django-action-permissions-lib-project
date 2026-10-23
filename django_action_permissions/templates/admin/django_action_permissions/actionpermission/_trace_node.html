@@ -1,0 +1,8 @@
+<li class="dap-node{% if not node.evaluated %} skipped{% endif %}">
+  {% if node.kind == "predicate" %}<code>{{ node.label }}</code>{% if node.description %} <span class="dap-quiet">{{ node.description }}</span>{% endif %}{% elif node.kind == "all" %}<code>&amp;</code> all of{% elif node.kind == "any" %}<code>|</code> any of{% else %}<code>~</code> not{% endif %}
+  {% include "admin/django_action_permissions/actionpermission/_answer.html" with answer=node.answer blocked=node.blocked evaluated=node.evaluated %}
+  {% if node.error %}<span class="dap-bad">{{ node.error }}</span>{% endif %}
+  {% if node.children %}
+    <ul>{% for child in node.children %}{% include "admin/django_action_permissions/actionpermission/_trace_node.html" with node=child %}{% endfor %}</ul>
+  {% endif %}
+</li>

@@ -1,0 +1,81 @@
+/* The action permissions' admin pages and the ruleset editor, on the admin's own colours (light and dark). */
+
+:root { --dap-good: #2e7d32; --dap-warn: #7a5c00; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --dap-good: #81c784; --dap-warn: #ffd54f; }
+}
+:root[data-theme="dark"] { --dap-good: #81c784; --dap-warn: #ffd54f; }
+
+.dap-ruleset { display: inline-block; max-width: 100%; vertical-align: top; }
+.dap-field { position: relative; display: inline-block; max-width: 100%; }
+.dap-ruleset input { font-family: var(--font-family-monospace, monospace); max-width: 100%; }
+.dap-tools { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
+.dap-tools[hidden] { display: none; }
+.dap-tools button {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.75rem; height: 1.75rem; padding: 0 6px;
+  font: 600 0.8125rem/1 var(--font-family-monospace, monospace); color: var(--body-fg); background: var(--darkened-bg);
+  border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;
+}
+.dap-tools button:hover { background: var(--selected-bg); }
+.dap-tools button:focus-visible { outline: 2px solid var(--link-fg); outline-offset: 1px; }
+.dap-status { display: block; margin-top: 4px; font-size: 0.75rem; color: var(--body-quiet-color); white-space: pre-wrap; }
+.dap-status code { font-size: inherit; }
+.dap-status .ok { color: var(--dap-good); }
+.dap-status .error { color: var(--error-fg); }
+.dap-status .caret { font-family: var(--font-family-monospace, monospace); color: var(--error-fg); display: block; }
+.dap-status .unknown { color: var(--error-fg); text-decoration: underline wavy; }
+.dap-status a { margin-left: 8px; }
+
+.dap-suggestions {
+  position: absolute; z-index: 20; left: 0; top: 100%; min-width: 16rem; max-height: 14rem; overflow-y: auto;
+  margin: 2px 0 0; padding: 2px 0; list-style: none;
+  background: var(--body-bg); color: var(--body-fg);
+  border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.dap-suggestions li { padding: 4px 8px; cursor: pointer; list-style: none; }
+.dap-suggestions li[aria-selected="true"], .dap-suggestions li:hover { background: var(--selected-row, var(--selected-bg)); }
+.dap-suggestions code { font-weight: 600; }
+.dap-suggestions .dap-quiet { margin-left: 6px; }
+
+.dap-quiet { color: var(--body-quiet-color); font-size: 0.75rem; }
+.dap-good { color: var(--dap-good); }
+.dap-warn { color: var(--dap-warn); }
+.dap-bad { color: var(--error-fg); }
+
+.dap-badge {
+  display: inline-block; padding: 0 6px; margin-left: 4px; border-radius: 8px; font-size: 0.6875rem;
+  background: var(--darkened-bg); color: var(--body-quiet-color); border: 1px solid var(--hairline-color);
+}
+
+/* the overview */
+.dap-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+.dap-scroll { overflow-x: auto; }
+.dap-matrix th[scope="row"] { white-space: nowrap; }
+.dap-matrix .dap-model th { background: var(--darkened-bg); color: var(--body-quiet-color); font-weight: 600; }
+.dap-cell { vertical-align: top; min-width: 7rem; }
+.dap-cell.granted { background: var(--selected-bg); }
+.dap-any { color: var(--dap-good); font-weight: 600; }
+.dap-none { color: var(--body-quiet-color); }
+.dap-unlisted li { list-style: none; }
+
+/* verify */
+.dap-verdict { padding: 8px 16px; margin: 16px 0; border-radius: 4px; border-left: 6px solid; }
+.dap-verdict.allowed { background: var(--message-success-bg); border-color: var(--dap-good); }
+.dap-verdict.refused { background: var(--message-error-bg); border-color: var(--error-fg); }
+.dap-verdict p { margin: 4px 0; }
+.dap-note { color: var(--body-quiet-color); font-style: italic; }
+.dap-steps, .dap-trace, .dap-trace ul { padding-left: 0; }
+.dap-steps li, .dap-trace li { list-style: none; padding: 2px 0; }
+.dap-trace ul { margin-left: 20px; padding-left: 10px; border-left: 1px solid var(--hairline-color); }
+.dap-node.skipped > code, .dap-node.skipped > .dap-quiet { opacity: 0.5; }
+.dap-group { margin: 12px 0; padding: 8px 12px; border: 1px solid var(--hairline-color); border-radius: 4px; }
+.dap-group h3 { margin: 0 0 6px; font-size: 0.875rem; }
+
+.dap-chip {
+  display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 0.6875rem; font-weight: 600;
+  border: 1px solid transparent; vertical-align: baseline;
+}
+.dap-chip.true { background: var(--message-success-bg); color: var(--dap-good); border-color: currentColor; }
+.dap-chip.false, .dap-chip.blocked { background: var(--message-error-bg); color: var(--error-fg); border-color: currentColor; }
+.dap-chip.none { background: var(--message-warning-bg); color: var(--dap-warn); border-color: currentColor; }
+.dap-chip.skipped { background: transparent; color: var(--body-quiet-color); border-color: var(--hairline-color); }

@@ -25,11 +25,13 @@ project: the definitions, their predicates and the group names are passed in by 
 - `entries`: each action permission's entry as the checks read it, cached under its own key.
 - `views`: `permission_required` and `PermissionRequiredMixin`, for plain Django views (no DRF needed).
 - `abac`: `unrestricted(user, perm)` and `allowed(user, perm, obj)`, the same checks in any code.
+- `explain`: `explain(user, perm, obj)`, how `allowed` answers, step by step, each ruleset traced.
 - `backends`: the rules backends, which run the rules and read their answers.
 - `yaml_io` and the commands `django_action_permissions_load` / `django_action_permissions_export`: the permission
   definitions as a YAML document.
 - `auth`: `ActionPermissionBackend`, an optional authentication backend: `user.has_perm(perm, obj)` by the rulesets.
-- `admin`: every part of the action permissions editable, and the Load, Export and Check tools.
+- `admin`: every part of the action permissions editable, the rulesets checked as they're typed, and the
+  Overview, Verify, Load, Export and Check tools.
 - `checks`: system checks of the settings and of the stored action permissions.
 
 ## Install
@@ -339,6 +341,18 @@ allowed(user, "shop.view_order", order)
 held_permissions(user)  # {"shop.view_order": False, ...}: every action permission held, and whether on any object
 ```
 
+```python
+from django_action_permissions.explain import explain
+
+explain(user, "shop.view_order", order).reason  # "Allowed by CUSTOMERS's ruleset."
+explain(user, "shop.view_order", order, draft=("CUSTOMERS", "own_order & ~archived"))  # what if
+```
+
+`explain` goes through the steps of `allowed` and returns them: the checks before the rulesets, each group's ruleset
+as a tree of the predicates' answers (those skipped by `&` / `|` marked), the backend's default, the answer, and, for an
+object refused, the 403 or 404 a view gives. It doesn't let a block or an exception through: it reports them. With a
+`draft`, one group's ruleset is replaced for that check only (`draft_info`). The admin's Verify page shows it.
+
 `held_permissions(user)` is what a profile or a menu asks: the action permissions the user holds (through their
 groups or directly), each with whether on any object (as `unrestricted` would answer), filtered in the database in
 two queries, however many action permissions there are.
@@ -371,16 +385,34 @@ gives the same document.
 ## Admin
 
 Every model is editable: an entry on one page (its permission, its `rbac` groups, `no_detail`, `staff`, and its
-groups' rulesets, checked and made canonical as they're saved), the predicates' definitions (code, function,
-description, and their uses; one in use can't be deleted; setup syncs the registered ones from the code), and the
-groups' rulesets on their own, with the predicates each uses. The entries' list has the configuration tools:
+groups' rulesets), the predicates' definitions (code, function, description, their status in the code and their uses;
+one in use can't be deleted), and the groups' rulesets on their own, with the predicates each uses. A ruleset is
+checked as it's typed (where it doesn't parse, its canonical form, the predicates not stored) and completes the
+predicates' codes (Ctrl+Space lists them all), with buttons for the operators: `&` and `|` after the caret (the
+predicates' list opens for the next one), `~` before the predicate or the selection at the caret (again to remove
+it), `( )` around the selection; it is made canonical as it's saved, and refused for a group that isn't
+granted the permission. A setup or a Load without `keep` replaces what is edited here: export the YAML to keep the
+definitions in the code in step. The entries' list has the tools:
 
+- **Overview**: the entries against the groups, as a matrix: who holds each permission, on any object or through a
+  ruleset, `no_detail` and `staff`; filtered by text, app, group or predicate. An app's permissions that aren't
+  action permissions yet are listed with a link to add each one.
+- **Verify**: superusers only, as it runs the project's predicates on any object, for any user
+  (`ActionPermissionAdmin.has_verify_permission` to open it to others). Given a user, the action permissions they
+  hold; with a permission, and maybe an object's primary key, `explain`'s answer, each group's ruleset traced; with a
+  draft for a group, the answer as if its ruleset were the draft, nothing saved. A ruleset's **Test…** link opens it
+  with the ruleset as the draft.
+
+Rows checked in the list carry into the tools: **Verify** opens with the permission of the first one, **Overview**
+shows only those.
 - **Load YAML**: superusers only, as it rewrites the groups' permissions; nothing is written if the document has
   an error.
 - **Export YAML**, and the action **Export selected as YAML**: users who may view the three models.
 - **Check configuration**: the system checks below, the database ones included.
 
-Load and Export need the `yaml` extra; without it they aren't offered.
+Load and Export need the `yaml` extra; without it they aren't offered. The predicates' list has **Sync
+predicates** (users who may add and change them): it shows what the code registers against what is stored, and stores
+it (`rbac.store_predicates()`, what setup does first), without touching the entries.
 
 ## Checks
 

@@ -1,7 +1,16 @@
 {% extends "admin/change_list.html" %}
-{% load admin_urls %}
+{% load admin_urls static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script src="{% static 'django_action_permissions/changelist.js' %}" defer></script>
+{% endblock %}
 
 {% block object-tools-items %}
+  <li><a href="{% url opts|admin_urlname:'overview' %}" data-selection="entry" title="Overview: of the rows selected, or of every one">Overview</a></li>
+  {% if may_verify %}
+    <li><a href="{% url opts|admin_urlname:'verify' %}" data-selection="entry" data-selection-max="1" title="Verify: the permission of the row selected">Verify</a></li>
+  {% endif %}
   {% if yaml_available %}
     {% if request.user.is_superuser %}
       <li><a href="{% url opts|admin_urlname:'load' %}">Load YAML</a></li>

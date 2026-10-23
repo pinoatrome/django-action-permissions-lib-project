@@ -1,0 +1,1 @@
+{% if not evaluated %}<span class="dap-chip skipped">not evaluated</span>{% elif blocked is not None %}<span class="dap-chip blocked" title="{{ blocked }}">blocked: {{ blocked }}</span>{% elif answer is True %}<span class="dap-chip true">true</span>{% elif answer is False %}<span class="dap-chip false">false</span>{% else %}<span class="dap-chip none">none</span>{% endif %}

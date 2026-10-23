@@ -1,0 +1,102 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls %}
+
+{% block extrahead %}{{ block.super }}{{ form.media }}{% endblock %}
+
+{% block breadcrumbs %}{% include "admin/django_action_permissions/actionpermission/_breadcrumbs.html" %}{% endblock %}
+
+{% block content %}
+  <p>
+    Runs the checks a view makes (<code>abac.allowed</code>) for a user, step by step, the project's predicates
+    included. A draft replaces one group's ruleset for this check only: nothing is saved.
+  </p>
+  <form method="get">
+    {% if form.non_field_errors %}<p class="errornote">{{ form.non_field_errors|join:" " }}</p>{% endif %}
+    <fieldset class="module aligned">
+      {% for field in form %}
+        <div class="form-row{% if field.errors %} errors{% endif %}">
+          {{ field.errors }}
+          <div class="flex-container">{{ field.label_tag }} {{ field }}</div>
+          {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </fieldset>
+    <datalist id="dap-perms">{% for code in perm_codes %}<option value="{{ code }}">{% endfor %}</datalist>
+    <div class="submit-row"><input type="submit" value="Verify" class="default"></div>
+  </form>
+
+  {% if held is not None %}
+    <h2>The action permissions {{ form.cleaned_data.user }} holds</h2>
+    {% if held %}
+      <table>
+        <thead><tr><th>Permission</th><th>On</th><th></th></tr></thead>
+        <tbody>
+          {% for perm, any_object in held %}
+            <tr>
+              <td><code>{{ perm }}</code></td>
+              <td>{% if any_object %}any object{% else %}the objects a ruleset allows{% endif %}</td>
+              <td><a href="?user={{ form.cleaned_data.user.get_username|urlencode }}&amp;perm={{ perm|urlencode }}">Explain</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>None.</p>
+    {% endif %}
+  {% endif %}
+
+  {% if explanation %}
+    {% with ex=explanation %}
+      <div class="dap-verdict {% if ex.allowed %}allowed{% else %}refused{% endif %}">
+        <p>
+          <strong>{% if ex.allowed %}Allowed{% else %}Refused{% endif %}</strong>:
+          <code>{{ ex.perm_code }}</code> for {{ ex.user }}
+          {% if ex.obj is not None %}on {{ ex.obj }}{% else %}on any object{% endif %}{% if ex.draft %}, with the draft for {{ ex.draft.0 }}{% endif %}.
+        </p>
+        <p>{{ ex.reason }}</p>
+        {% if ex.obj is not None %}
+          <p>
+            A view answers
+            {% if ex.allowed %}200{% elif ex.raises %}500{% elif ex.refusal == 404 %}404: the user can't read it either, its existence isn't revealed{% elif ex.refusal %}{{ ex.refusal }}{% else %}by asking for credentials{% endif %}.
+          </p>
+        {% endif %}
+        {% if ex.no_detail %}<p>{{ ex.no_detail|join:", " }}: may list but not retrieve a single object (no_detail).</p>{% endif %}
+      </div>
+      {% for note in ex.notes %}<p class="dap-note">{{ note }}</p>{% endfor %}
+
+      <h2>Steps</h2>
+      <ul class="dap-steps">
+        {% for step in ex.steps %}
+          <li class="{% if step.passed %}passed{% else %}failed{% endif %}">
+            <span class="dap-chip {% if step.passed %}true{% else %}false{% endif %}">{% if step.passed %}yes{% else %}no{% endif %}</span>
+            {{ step.label }}{% if step.detail %} <span class="dap-quiet">{{ step.detail }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if ex.groups %}
+        <h2>The groups holding it</h2>
+        {% for row in ex.groups %}
+          <div class="dap-group">
+            <h3>
+              {{ row.group }}
+              {% if row.draft %}<span class="dap-badge">draft</span>{% endif %}
+              {% if row.skipped %}{% include "admin/django_action_permissions/actionpermission/_answer.html" with evaluated=False %}{% else %}{% include "admin/django_action_permissions/actionpermission/_answer.html" with answer=row.answer blocked=row.blocked evaluated=True %}{% endif %}
+            </h3>
+            {% if row.expression %}
+              <p><code>{{ row.expression }}</code>{% if row.checked_user and row.checked_user != ex.user|stringformat:"s" %} <span class="dap-quiet">run with the rights of {{ row.checked_user }}</span>{% endif %}</p>
+            {% else %}
+              <p>No ruleset: on any object.</p>
+            {% endif %}
+            {% if row.skipped %}<p class="dap-note">Not run: {{ row.skipped }}.</p>{% endif %}
+            {% if row.error %}<p class="errornote">{{ row.error }}</p>{% endif %}
+            {% if row.trace %}<ul class="dap-trace">{% include "admin/django_action_permissions/actionpermission/_trace_node.html" with node=row.trace %}</ul>{% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+      {% if ex.backend %}
+        <p>The rules backend, <code>{{ ex.backend }}</code>, {% if ex.default_allows %}allows{% else %}denies{% endif %} when no group's ruleset decides.</p>
+      {% endif %}
+    {% endwith %}
+  {% endif %}
+{% endblock %}

@@ -12,6 +12,7 @@ from django_action_permissions.predicates import (
     NamedPredicate,
     Not,
     Predicate,
+    RulesetSyntaxError,
     cached_ruleset,
     canonical,
     codes_of,
@@ -209,6 +210,24 @@ def test_a_bad_expression_says_where(expression, message):
         parse(expression, resolve)
 
 
+@pytest.mark.parametrize(
+    "expression, position, token",
+    [
+        ("", 0, None),
+        ("owner &", 7, None),
+        ("& owner", 0, "&"),
+        ("(owner | yes", 12, None),
+        ("owner + yes", 6, "+"),
+        ("owner & nobody", 8, "nobody"),
+    ],
+)
+def test_a_bad_expression_says_where_as_a_position(expression, position, token):
+    with pytest.raises(RulesetSyntaxError) as raised:
+        parse(expression, resolve)
+
+    assert (raised.value.position, raised.value.token) == (position, token)
+
+
 def test_the_codes_of_an_expression():
     assert codes_of("owner & ~(yes | is_staff)") == {"owner", "yes", "is_staff"}
     assert codes_of("owner + 1") == set()
@@ -248,3 +267,59 @@ def test_the_built_in_predicates(django_user_model):
     assert builtin.is_staff(staff, None) is True and builtin.is_staff(USER, None) is False
     assert builtin.is_superuser(staff, None) is True and builtin.is_superuser(USER, None) is False
     assert builtin.is_self(USER, USER) is True and builtin.is_self(USER, staff) is False
+
+
+# ── the trace ────────────────────────────────────────────────────────────────
+
+LEAVES = ["yes", "no", "abstain", "block", "owner"]
+SHAPES = ["{} & {}", "{} | {}", "~{}", "~({} & {}) | {}", "{} | {} & {}", "({} | {}) & ~{}"]
+
+
+def _expressions():
+    for shape in SHAPES:
+        holes = shape.count("{}")
+        for i in range(len(LEAVES) ** holes):
+            codes = [LEAVES[(i // len(LEAVES) ** k) % len(LEAVES)] for k in range(holes)]
+            yield shape.format(*codes)
+
+
+def _evaluated(node):
+    """The codes of the predicates a trace evaluated, in order."""
+    if node.kind == "predicate":
+        return [node.label] if node.evaluated else []
+    return [code for child in node.children for code in _evaluated(child)]
+
+
+@pytest.mark.parametrize("expression", list(_expressions()))
+def test_a_trace_answers_as_the_call_and_calls_the_same_predicates(expression, calls):
+    ruleset = parse(expression, resolve)
+    obj = SimpleNamespace(owner="ann")
+    try:
+        answer, blocked = ruleset(USER, obj), None
+    except PermissionDenied as e:
+        answer, blocked = None, str(e)
+    called = list(calls)
+    calls.clear()
+
+    node = ruleset.trace(USER, obj, blocks=(PermissionDenied,))
+
+    assert (node.answer, node.blocked) == (answer, blocked)
+    assert calls == called == _evaluated(node)
+
+
+def test_a_trace_marks_what_it_skips_and_describes_the_predicates():
+    node = parse("no & (yes | owner)", resolve).trace(USER, None)
+
+    assert (node.kind, node.label, node.answer) == ("all", "&", False)
+    first, rest = node.children
+    assert (first.label, first.answer, first.evaluated) == ("no", False, True)
+    assert (rest.kind, rest.evaluated, [child.evaluated for child in rest.children]) == ("any", False, [False, False])
+    assert rest.children[1].description == "The object's owner is the user."
+
+
+def test_a_trace_lets_other_exceptions_through_and_records_an_import_error():
+    with pytest.raises(PermissionDenied):
+        parse("block", resolve).trace(USER, None)  # not in `blocks`
+
+    node = NamedPredicate("gone", "tests.rules.gone").trace(USER, None)
+    assert node.answer is False and "gone" in node.error

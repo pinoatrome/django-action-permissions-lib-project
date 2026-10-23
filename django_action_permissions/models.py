@@ -32,6 +32,12 @@ class ActionPermissionRule(models.Model):
             raise ValidationError({"fqn": error})
 
 
+def stored_resolver():
+    """`resolve(code) -> NamedPredicate` over the stored predicates (`KeyError` for one not stored), for `parse`."""
+    stored = {rule.code: NamedPredicate(rule.code, rule.fqn) for rule in ActionPermissionRule.objects.all()}
+    return stored.__getitem__
+
+
 class ActionPermission(models.Model):
     """An action permission: a permission setup stored. The groups it's granted to (`rbac`) are `Group.permissions`."""
 
@@ -85,8 +91,7 @@ class ActionPermissionGroup(models.Model):
 
     def parsed(self):
         """The ruleset, parsed against the stored predicates (`ValueError` when it can't be)."""
-        stored = {rule.code: NamedPredicate(rule.code, rule.fqn) for rule in ActionPermissionRule.objects.all()}
-        return parse(self.ruleset, stored.__getitem__)
+        return parse(self.ruleset, stored_resolver())
 
     def clean(self):
         try:

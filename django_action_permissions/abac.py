@@ -113,9 +113,10 @@ def read_permission(obj) -> str | None:
 
 def refusal(user, perm_code: str, obj, *, manager_user=None) -> type[Exception]:
     """What to raise when `user` may not use `perm_code` on `obj`: `Http404` when they can't read it either, so
-    that its existence isn't revealed (as DRF's `DjangoObjectPermissions`), else `PermissionDenied` (403)."""
+    that its existence isn't revealed (as DRF's `DjangoObjectPermissions`), else `PermissionDenied` (403). An
+    unsaved instance, the object a creation is checked on, is always `PermissionDenied`: there's nothing to hide."""
     read = read_permission(obj)
-    if read is None:
+    if read is None or obj.pk is None:
         return DjangoPermissionDenied
     if read == perm_code or not allowed(user, read, obj, manager_user=manager_user):
         return Http404

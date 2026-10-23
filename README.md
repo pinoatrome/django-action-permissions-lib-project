@@ -208,8 +208,9 @@ authenticated user and a refusal (so a request for credentials) for an anonymous
 permission.
 
 An object the user may not use is a 403, or a 404 when they can't read it either (`view_<model>` on it), as DRF's
-`DjangoObjectPermissions` does: another user's objects aren't revealed. `not_found_when_unreadable = False` on a
-subclass gives 403 for every refusal.
+`DjangoObjectPermissions` does: another user's objects aren't revealed. A creation refused (the unsaved object
+passed to `check_object_permissions`) is always a 403: there's nothing to hide. `not_found_when_unreadable = False`
+on a subclass gives 403 for every refusal.
 
 ```python
 REST_FRAMEWORK = {"DEFAULT_PERMISSION_CLASSES": ["django_action_permissions.permissions.DenyAll"]}

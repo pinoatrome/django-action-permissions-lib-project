@@ -288,6 +288,17 @@ def test_the_mixin_answers_404_for_an_object_the_user_cant_read(
     assert UserPage.as_view()(request_by(customer), pk=customer.pk).content == b"ann"
 
 
+def test_a_creation_refused_by_the_decorator_is_forbidden(setup, customer_and_other, django_user_model):
+    setup(SELF_ONLY)
+    customer, _other = customer_and_other
+
+    def new_user(request, **kwargs):
+        return django_user_model(username="new")
+
+    with pytest.raises(PermissionDenied):
+        permission_required(CHANGE, get_object=new_user)(user_page)(request_by(customer), pk=0)
+
+
 def test_the_mixin_answers_for_an_object_without_raising(setup, customer_and_other):
     setup(SELF_ONLY)
     customer, other = customer_and_other

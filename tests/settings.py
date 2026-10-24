@@ -2,6 +2,8 @@
 in-memory database, with Django REST framework when it's installed (the tox env `nodrf` runs without). This is the
 library's own test setup, not a recommendation for an app."""
 
+import django
+
 from django_action_permissions.utils import drf_installed
 
 SECRET_KEY = "tests-only"
@@ -20,7 +22,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
-    "django.contrib.auth.middleware.LoginRequiredMiddleware",  # DenyAll without DRF (check W005)
+    # DenyAll without DRF (check W005); Django 5.1+
+    *(["django.contrib.auth.middleware.LoginRequiredMiddleware"] if django.VERSION >= (5, 1) else []),
 ]
 TEMPLATES = [
     {

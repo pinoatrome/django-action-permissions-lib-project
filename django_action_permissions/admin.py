@@ -537,6 +537,11 @@ class ActionPermissionAdmin(admin.ModelAdmin):
             named.update(group.name for group in [*entry.no_detail.all(), *entry.staff.all()])
         columns = sorted({filters["group"]} & named if filters["group"] else named)
         rows = [self._overview_row(request, entry, columns) for entry in entries]
+        column_links = []  # each group's header: the same filters, only that group (Django 5.1's {% querystring %})
+        for name in columns:
+            query = request.GET.copy()
+            query["group"] = name
+            column_links.append((name, f"?{query.urlencode()}"))
 
         unlisted = []
         if filters["app"] and self.has_add_permission(request):
@@ -553,6 +558,7 @@ class ActionPermissionAdmin(admin.ModelAdmin):
             filters=filters,
             selected=selected,
             columns=columns,
+            column_links=column_links,
             rows=rows,
             unlisted=unlisted,
             apps=sorted(set(ContentType.objects.values_list("app_label", flat=True))),

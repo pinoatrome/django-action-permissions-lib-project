@@ -3,8 +3,9 @@
 
 The default permission is checked against what runs: with DRF, the views' default permission classes (W004);
 without it, Django has no permission classes, and `DEFAULT_PERMISSION` only names the policy of the built-in
-backends (`DenyAll` or `AllowAny`, E001), the views being closed by `LoginRequiredMiddleware` (W005)."""
+backends (`DenyAll` or `AllowAny`, E001), the views being closed by `LoginRequiredMiddleware` (W005, Django 5.1+)."""
 
+import django
 from django.conf import settings
 from django.core import checks
 from django.db import DatabaseError
@@ -23,6 +24,7 @@ ALLOW_ANY = "rest_framework.permissions.AllowAny"
 # The policies of the built-in backends: without DRF, the only default permissions that can be told apart.
 KNOWN_DEFAULT_PERMISSIONS = {DENY_ALL, ALLOW_ANY}
 LOGIN_REQUIRED_MIDDLEWARE = "django.contrib.auth.middleware.LoginRequiredMiddleware"
+LOGIN_REQUIRED_AVAILABLE = django.VERSION >= (5, 1)  # before, there's no middleware to recommend
 
 
 def _dotted_path(cls) -> str:
@@ -41,7 +43,11 @@ def _check_default_permission(default_permission: str) -> list[checks.CheckMessa
                     id=f"{ID}.E001",
                 )
             ]
-        if default_permission == DENY_ALL and LOGIN_REQUIRED_MIDDLEWARE not in settings.MIDDLEWARE:
+        if (
+            LOGIN_REQUIRED_AVAILABLE
+            and default_permission == DENY_ALL
+            and LOGIN_REQUIRED_MIDDLEWARE not in settings.MIDDLEWARE
+        ):
             return [
                 checks.Warning(
                     "DEFAULT_PERMISSION is DenyAll, but no view is closed by default",

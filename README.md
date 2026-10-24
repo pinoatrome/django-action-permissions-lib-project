@@ -4,8 +4,8 @@
 [![Django](https://img.shields.io/badge/django-5.2%20LTS%20%7C%206.1-092E20?logo=django&logoColor=white)](#supported-versions)
 [![Django REST framework](https://img.shields.io/badge/DRF-3.16%2B%20%28optional%29-A30000)](#usage)
 [![Tested](https://img.shields.io/badge/tested-Django%205.2%20%2B%20Py%203.13%20%7C%20Django%206.1%20%2B%20Py%203.14%20%7C%20without%20DRF-success)](#development)
-[![Release](https://img.shields.io/github/v/tag/pinoatrome/django-action-permissions-lib-project?label=release&sort=semver)](https://github.com/pinoatrome/django-action-permissions-lib-project/tags)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](pyproject.toml)
+[![PyPI](https://img.shields.io/pypi/v/django-action-permissions)](https://pypi.org/p/django-action-permissions)
+[![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue)](https://github.com/pinoatrome/django-action-permissions-lib-project/blob/develop/LICENSE)
 
 Action-based permissions for Django REST framework viewsets and plain Django views. A viewset action is checked
 against the Django model permission it stands for, an action permission: which groups hold it (RBAC) and which
@@ -37,7 +37,13 @@ project: the definitions, their predicates and the group names are passed in by 
 ## Install
 
 ```bash
-pip install "django-action-permissions[drf,yaml] @ git+https://github.com/pinoatrome/django-action-permissions-lib-project@v0.2.0"
+pip install "django-action-permissions[drf,yaml]"
+```
+
+An unreleased commit or branch installs from git:
+
+```bash
+pip install "django-action-permissions[drf,yaml] @ git+https://github.com/pinoatrome/django-action-permissions-lib-project@develop"
 ```
 
 The extras: `drf` (Django REST framework) for the viewset permission classes, `yaml` (PyYAML) for the YAML loader
@@ -481,3 +487,14 @@ the details in `htmlcov/index.html` and `coverage.xml` for CI.
 
 The tests use an in-memory SQLite database (`tests/settings.py`): that is the library's own test setup, not a
 requirement on the app.
+
+## Releasing
+
+GitHub Actions publish to PyPI (`.github/workflows/publish.yml`, PyPI trusted publishing, no tokens):
+
+1. Bump `version` in `pyproject.toml` and merge to `develop`.
+2. Tag `vX.Y.Z` and publish a GitHub release from it: `gh release create vX.Y.Z --generate-notes`. The workflow runs
+   `tox`, checks the tag against `pyproject.toml`'s version, builds, and uploads to PyPI.
+
+A dry run to TestPyPI: run the workflow by hand (`gh workflow run publish.yml -f version=X.Y.Z.devN`); TestPyPI
+takes each version once.

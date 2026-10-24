@@ -471,6 +471,7 @@ def test_the_overview_is_filtered(admin_client, loaded):
     assert "auth.view_user" not in get(q="change")
     content = get(group="CUSTOMERS")
     assert "auth.view_user" not in content and ">BOSSES</a></th>" not in content
+    assert '<a href="?app=auth&amp;group=BOSSES" title="Only BOSSES">' in get(app="auth")
     assert "No action permission matches." in get(app="django_action_permissions")
     content = get(app="auth")
     assert "Not yet action permissions in auth" in content and "auth.delete_user" in content

@@ -436,18 +436,9 @@ it (`rbac.store_predicates()`, what setup does first), without touching the entr
   `W003` a stored predicate isn't used and no `@predicate` defines it any more; `W006` a registered predicate isn't
   stored (setup hasn't run since it was added).
 
-## Upgrading from 0.1.0
-
-1. Add `"django_action_permissions"` to `INSTALLED_APPS` and run `migrate`.
-2. Move the rule functions out of `apply_rule` into `@predicate` functions `(user, obj)` in your apps' `rules.py`,
-   and write each group's `abac` list as one ruleset: `[a, b]` read as "any allows" is `a | b`, a `rules` list
-   ("all must pass") is `a & b`.
-3. Run setup again: until then no group holds a permission on any object.
-4. Drop the overrides of `get_perm_info` and `apply_rule`: the action permissions are the database's.
-
 ## Inspiration
 
-The implementation has been inspired by [django-rules](https://github.com/dfunckt/django-rules), whose ideas it
+Parts of the implementation has been inspired by [django-rules](https://github.com/dfunckt/django-rules), whose ideas it
 borrows:
 
 - **predicates**: plain functions of the user and the object, made predicates by a decorator (`@predicate`);
@@ -491,14 +482,3 @@ the details in `htmlcov/index.html` and `coverage.xml` for CI.
 
 The tests use an in-memory SQLite database (`tests/settings.py`): that is the library's own test setup, not a
 requirement on the app.
-
-## Releasing
-
-GitHub Actions publish to PyPI (`.github/workflows/publish.yml`, PyPI trusted publishing, no tokens):
-
-1. Bump `version` in `pyproject.toml` and merge to `develop`.
-2. Tag `vX.Y.Z` and publish a GitHub release from it: `gh release create vX.Y.Z --generate-notes`. The workflow runs
-   `tox`, checks the tag against `pyproject.toml`'s version, builds, and uploads to PyPI.
-
-A dry run to TestPyPI: run the workflow by hand (`gh workflow run publish.yml -f version=X.Y.Z.devN`); TestPyPI
-takes each version once.

@@ -1,0 +1,85 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls static %}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'django_action_permissions/ruleset.css' %}">{% endblock %}
+
+{% block breadcrumbs %}{% include "admin/django_action_permissions/actionpermission/_breadcrumbs.html" %}{% endblock %}
+
+{% block content %}
+  {% if selected %}
+    <p class="dap-note">
+      The {{ selected|length }} action permission{{ selected|length|pluralize }} selected in the list.
+      <a href="?">Show every one</a>
+    </p>
+  {% endif %}
+  <form method="get" class="dap-filters" role="search">
+    {% for pk in selected %}<input type="hidden" name="entry" value="{{ pk }}">{% endfor %}
+    <input type="search" name="q" value="{{ filters.q }}" placeholder="Search permissions" aria-label="Search permissions">
+    <select name="app" aria-label="App">
+      <option value="">Every app</option>
+      {% for app in apps %}<option{% if app == filters.app %} selected{% endif %}>{{ app }}</option>{% endfor %}
+    </select>
+    <select name="group" aria-label="Group">
+      <option value="">Every group</option>
+      {% for group in groups %}<option{% if group == filters.group %} selected{% endif %}>{{ group }}</option>{% endfor %}
+    </select>
+    <select name="predicate" aria-label="Predicate">
+      <option value="">Any predicate</option>
+      {% for code in predicates %}<option{% if code == filters.predicate %} selected{% endif %}>{{ code }}</option>{% endfor %}
+    </select>
+    <input type="submit" value="Filter">
+    {% if filters.q or filters.app or filters.group or filters.predicate or selected %}<a href="?">Clear</a>{% endif %}
+  </form>
+
+  {% if rows %}
+    <div class="dap-scroll">
+      <table class="dap-matrix">
+        <thead>
+          <tr>
+            <th scope="col">Permission</th>
+            {% for group, link in column_links %}<th scope="col"><a href="{{ link }}" title="Only {{ group }}">{{ group }}</a></th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% regroup rows by model as models %}
+          {% for model in models %}
+            <tr class="dap-model"><th colspan="{{ columns|length|add:1 }}">{{ model.grouper }}</th></tr>
+            {% for row in model.list %}
+              <tr>
+                <th scope="row">
+                  {% if row.url %}<a href="{{ row.url }}">{{ row.entry.perm_code }}</a>{% else %}{{ row.entry.perm_code }}{% endif %}
+                  {% if may_verify %}<a class="dap-quiet" href="{% url opts|admin_urlname:'verify' %}?perm={{ row.entry.perm_code|urlencode }}">verify</a>{% endif %}
+                </th>
+                {% for cell in row.cells %}
+                  <td class="dap-cell{% if cell.granted %} granted{% endif %}">
+                    {% if cell.ruleset %}
+                      <a href="{{ cell.url|default:'#' }}" title="{{ cell.ruleset }}"><code>{{ cell.ruleset|truncatechars:40 }}</code></a>
+                    {% elif cell.granted %}
+                      <span class="dap-any" title="Held without a ruleset">any object</span>
+                      {% if cell.add_url %}<a class="dap-quiet" href="{{ cell.add_url }}" title="Restrict it with a ruleset">+ ruleset</a>{% endif %}
+                    {% else %}
+                      <span class="dap-none" title="Not granted">–</span>
+                    {% endif %}
+                    {% if cell.no_detail %}<span class="dap-badge" title="May list but not retrieve a single object">no detail</span>{% endif %}
+                    {% if cell.staff %}<span class="dap-badge" title="Acts with the rights of their manager">staff</span>{% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>No action permission matches.</p>
+  {% endif %}
+
+  {% if unlisted %}
+    <h2>Not yet action permissions in {{ filters.app }}</h2>
+    <ul class="dap-unlisted">
+      {% for item in unlisted %}
+        <li><code>{{ item.permission.content_type.app_label }}.{{ item.permission.codename }}</code> {{ item.permission.name }} <a href="{{ item.add_url }}">Add</a></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

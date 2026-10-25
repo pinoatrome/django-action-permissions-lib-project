@@ -1,0 +1,31 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}{% include "admin/django_action_permissions/actionpermission/_breadcrumbs.html" %}{% endblock %}
+
+{% block content %}
+  <p>
+    Stores the predicates the code registers (<code>@predicate</code> in the installed apps' <code>rules</code> modules),
+    as setup does first. The entries aren't touched, and no predicate is removed.
+  </p>
+  {% if rows %}
+    <table>
+      <thead><tr><th>Code</th><th>Function</th><th>Description</th><th></th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td><code>{{ row.code }}</code></td>
+            <td><code>{{ row.fqn }}</code></td>
+            <td>{{ row.description }}</td>
+            <td>{% if row.change == "new" %}new{% elif row.change == "changed" %}changed{% else %}stored{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="submit-row">
+      <input type="submit" value="Store {{ changes }} new or changed predicate{{ changes|pluralize }}" class="default"{% if not changes %} disabled{% endif %}>
+    </div>
+  </form>
+{% endblock %}

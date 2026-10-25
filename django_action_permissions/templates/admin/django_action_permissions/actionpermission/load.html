@@ -1,0 +1,16 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}{% include "admin/django_action_permissions/actionpermission/_breadcrumbs.html" %}{% endblock %}
+
+{% block content %}
+  <p>
+    The document replaces the entries and predicates it lists, and gives its groups the permissions it grants them.
+    Without <em>keep</em>, those groups lose any other permission, and the entries and rules it doesn't list are removed.
+    Nothing is written if the document has an error.
+  </p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div class="submit-row"><input type="submit" value="Load" class="default"></div>
+  </form>
+{% endblock %}

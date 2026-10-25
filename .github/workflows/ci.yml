@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # tox.ini's env_list needs every interpreter: py310-django42, py313-django52 and py314-django61
+      # tox.ini's env_list needs every interpreter: py310-django52, py313-django52 and py314-django61
       - uses: actions/setup-python@v5
         with:
           python-version: |

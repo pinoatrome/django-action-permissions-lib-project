@@ -175,20 +175,12 @@ def test_without_drf_another_default_permission_cant_be_checked(settings, withou
     assert "can't be checked" in checks.check_settings()[0].hint
 
 
-def test_without_drf_deny_all_wants_the_views_closed_by_login(settings, monkeypatch, without_drf):
-    monkeypatch.setattr(checks, "LOGIN_REQUIRED_AVAILABLE", True)
+def test_without_drf_deny_all_wants_the_views_closed_by_login(settings, without_drf):
     settings.MIDDLEWARE = [m for m in settings.MIDDLEWARE if not m.endswith("LoginRequiredMiddleware")]
 
     assert ids(checks.check_settings()) == ["W005"]
 
     settings.ACTION_PERMISSIONS = ALLOW_ANY
-    assert checks.check_settings() == []
-
-
-def test_before_django_5_1_there_is_no_middleware_to_want(settings, monkeypatch, without_drf):
-    monkeypatch.setattr(checks, "LOGIN_REQUIRED_AVAILABLE", False)
-    settings.MIDDLEWARE = [m for m in settings.MIDDLEWARE if not m.endswith("LoginRequiredMiddleware")]
-
     assert checks.check_settings() == []
 
 

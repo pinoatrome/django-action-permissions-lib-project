@@ -37,7 +37,7 @@
         <thead>
           <tr>
             <th scope="col">Permission</th>
-            {% for group, link in column_links %}<th scope="col"><a href="{{ link }}" title="Only {{ group }}">{{ group }}</a></th>{% endfor %}
+            {% for group in columns %}<th scope="col"><a href="{% querystring group=group %}" title="Only {{ group }}">{{ group }}</a></th>{% endfor %}
           </tr>
         </thead>
         <tbody>

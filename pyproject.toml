@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,12 +8,18 @@ version = "0.4.0"
 description = "Action-based permissions for Django REST framework viewsets, driven by an RBAC/ABAC table stored in the database"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{ name = "Giuseppe Galli", email = "giuseppe.galli@gmail.com" }]
+keywords = ["django", "django-rest-framework", "permissions", "rbac", "abac", "authorization"]
 dependencies = [
-    "Django>=5.2",
+    "Django>=4.2",
 ]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
     "Framework :: Django",
+    "Framework :: Django :: 4.2",
     "Framework :: Django :: 5.2",
     "Framework :: Django :: 6.1",
     "Programming Language :: Python :: 3",
@@ -22,7 +28,16 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Topic :: Internet :: WWW/HTTP",
 ]
+
+[project.urls]
+Homepage = "https://github.com/pinoatrome/django-action-permissions-lib-project"
+Source = "https://github.com/pinoatrome/django-action-permissions-lib-project"
+Issues = "https://github.com/pinoatrome/django-action-permissions-lib-project/issues"
+Changelog = "https://github.com/pinoatrome/django-action-permissions-lib-project/releases"
 
 [project.optional-dependencies]
 test = [
@@ -52,6 +67,7 @@ django_action_permissions = ["templates/**/*", "static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["build", "dist", "*.egg-info", ".*", "venv", "htmlcov", "run"]
 pythonpath = ["."]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 
@@ -72,7 +88,7 @@ known-first-party = ["django_action_permissions"]
 [tool.coverage.run]
 source = ["django_action_permissions"]
 branch = true
-omit = ["*/migrations/*"]
+omit = ["*/migrations/*", "build/*", "*/build/*"]
 
 [tool.coverage.paths]
 # the package as installed in each tox env counts as the same source

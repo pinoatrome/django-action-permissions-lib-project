@@ -1,11 +1,11 @@
 # django-action-permissions-lib-project
 
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white)](#supported-versions)
-[![Django](https://img.shields.io/badge/django-5.2%20LTS%20%7C%206.1-092E20?logo=django&logoColor=white)](#supported-versions)
+[![Django](https://img.shields.io/badge/django-4.2%20LTS%20%7C%205.2%20LTS%20%7C%206.1-092E20?logo=django&logoColor=white)](#supported-versions)
 [![Django REST framework](https://img.shields.io/badge/DRF-3.16%2B%20%28optional%29-A30000)](#usage)
-[![Tested](https://img.shields.io/badge/tested-Django%205.2%20%2B%20Py%203.13%20%7C%20Django%206.1%20%2B%20Py%203.14%20%7C%20without%20DRF-success)](#development)
-[![Release](https://img.shields.io/github/v/tag/pinoatrome/django-action-permissions-lib-project?label=release&sort=semver)](https://github.com/pinoatrome/django-action-permissions-lib-project/tags)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](pyproject.toml)
+[![Tested](https://img.shields.io/badge/tested-Django%204.2%20%2B%20Py%203.10%20%7C%20Django%205.2%20%2B%20Py%203.13%20%7C%20Django%206.1%20%2B%20Py%203.14%20%7C%20without%20DRF-success)](#development)
+[![PyPI](https://img.shields.io/pypi/v/django-action-permissions)](https://pypi.org/p/django-action-permissions)
+[![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue)](https://github.com/pinoatrome/django-action-permissions-lib-project/blob/develop/LICENSE)
 
 Action-based permissions for Django REST framework viewsets and plain Django views. A viewset action is checked
 against the Django model permission it stands for, an action permission: which groups hold it (RBAC) and which
@@ -37,7 +37,13 @@ project: the definitions, their predicates and the group names are passed in by 
 ## Install
 
 ```bash
-pip install "django-action-permissions[drf,yaml] @ git+https://github.com/pinoatrome/django-action-permissions-lib-project@v0.2.0"
+pip install "django-action-permissions[drf,yaml]"
+```
+
+An unreleased commit or branch installs from git:
+
+```bash
+pip install "django-action-permissions[drf,yaml] @ git+https://github.com/pinoatrome/django-action-permissions-lib-project@develop"
 ```
 
 The extras: `drf` (Django REST framework) for the viewset permission classes, `yaml` (PyYAML) for the YAML loader
@@ -195,7 +201,7 @@ What to use depends on whether Django REST framework is installed (the `drf` ext
 | | with DRF | without DRF |
 |---|---|---|
 | DRF viewsets and `APIView`s | `permissions.BaseActionModelPermission` | — |
-| views closed by default | `REST_FRAMEWORK["DEFAULT_PERMISSION_CLASSES"]`: `DenyAll` (or `AllowAny`) | `LoginRequiredMiddleware` |
+| views closed by default | `REST_FRAMEWORK["DEFAULT_PERMISSION_CLASSES"]`: `DenyAll` (or `AllowAny`) | `LoginRequiredMiddleware` (Django 5.1+) |
 | function views | `views.permission_required` | `views.permission_required` |
 | class-based views | `views.PermissionRequiredMixin` | `views.PermissionRequiredMixin` |
 | any other code (filters, templates, tasks) | `abac.unrestricted`, `abac.allowed` | `abac.unrestricted`, `abac.allowed` |
@@ -293,7 +299,8 @@ with `permission_unrestricted = True`, and `get_object()` checks the object (`al
 
 Django has no permission classes, so nothing closes a view by default but
 `django.contrib.auth.middleware.LoginRequiredMiddleware` (Django 5.1+; the check `W005` says when it's missing with
-`DenyAll`). It requires a login only: the views still ask the action permissions, with `views` or `abac`.
+`DenyAll`). It requires a login only: the views still ask the action permissions, with `views` or `abac`. Before
+Django 5.1 there's no such middleware, and no `W005`: each view is closed with `login_required` / `LoginRequiredMixin`.
 
 `DEFAULT_PERMISSION` then only names the policy of the rules backend: `django_action_permissions.permissions.DenyAll`
 or `rest_framework.permissions.AllowAny`, by name, as neither can be imported (the check `E001` refuses anything
@@ -423,7 +430,7 @@ it (`rbac.store_predicates()`, what setup does first), without touching the entr
   of `CACHES`; `W001` `CACHE` is a `LocMemCache`.
 - `E007` `MANAGER_USER` doesn't import or isn't callable.
 - `W004` (with DRF) `DEFAULT_PERMISSION` isn't in `REST_FRAMEWORK["DEFAULT_PERMISSION_CLASSES"]`; `W005` (without
-  DRF) `DenyAll` without `LoginRequiredMiddleware`.
+  DRF, Django 5.1+) `DenyAll` without `LoginRequiredMiddleware`.
 - `E005` a predicate's function doesn't import; `E006` a group has a ruleset for a permission it doesn't hold;
   `E008` a ruleset doesn't parse, or names a predicate not stored; `W002` there's no action permission (setup not run);
   `W003` a stored predicate isn't used and no `@predicate` defines it any more; `W006` a registered predicate isn't
@@ -462,17 +469,20 @@ when nothing else does.
 
 ## Supported versions
 
-Tested on Django 5.2 LTS (Python 3.13) and Django 6.1 (Python 3.14), with Django REST framework 3.16+, and on
-Django 6.1 without DRF.
+Tested on Django 4.2 LTS (Python 3.10, Django REST framework 3.16–3.17), Django 5.2 LTS (Python 3.13) and Django 6.1
+(Python 3.14), with Django REST framework 3.16+, and on Django 6.1 without DRF.
+
+Django 4.2 is supported by the 0.4.x releases only; from 0.5 the library requires Django 5.2+.
 
 ## Development
 
 ```bash
 pip install -e ".[dev,test,drf,yaml]"
 pre-commit install          # ruff on commit, the tests (tox, Django 6.1) on push
-tox                         # lint, both Django versions, combined coverage
+tox                         # lint, every Django version, combined coverage
 tox -e lint                 # ruff check and ruff format --check only
 tox -e py314-django61       # one Django version
+tox -e py310-django42       # Django 4.2 LTS, the oldest Python
 tox -e py314-django61-nodrf # without Django REST framework
 ```
 
@@ -481,3 +491,14 @@ the details in `htmlcov/index.html` and `coverage.xml` for CI.
 
 The tests use an in-memory SQLite database (`tests/settings.py`): that is the library's own test setup, not a
 requirement on the app.
+
+## Releasing
+
+GitHub Actions publish to PyPI (`.github/workflows/publish.yml`, PyPI trusted publishing, no tokens):
+
+1. Bump `version` in `pyproject.toml` and merge to `develop`.
+2. Tag `vX.Y.Z` and publish a GitHub release from it: `gh release create vX.Y.Z --generate-notes`. The workflow runs
+   `tox`, checks the tag against `pyproject.toml`'s version, builds, and uploads to PyPI.
+
+A dry run to TestPyPI: run the workflow by hand (`gh workflow run publish.yml -f version=X.Y.Z.devN`); TestPyPI
+takes each version once.

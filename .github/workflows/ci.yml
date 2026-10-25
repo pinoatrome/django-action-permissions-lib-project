@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # tox.ini's env_list needs every interpreter: py310-django42, py313-django52 and py314-django61
+      - uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.10
+            3.13
+            3.14
+      - run: python -m pip install --upgrade pip tox
+      - run: tox

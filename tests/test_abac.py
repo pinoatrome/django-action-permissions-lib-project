@@ -251,10 +251,10 @@ def test_held_permissions_agree_with_unrestricted(member):
             assert held.get(perm) == (unrestricted(user, perm) if user.has_perm(perm) else None), (user, perm)
 
 
-def test_held_permissions_take_two_queries_however_many_action_permissions(setup, member, django_assert_num_queries):
+def test_held_permissions_take_a_few_queries_however_many_action_permissions(setup, member, django_assert_num_queries):
     setup({**TABLE, "auth.delete_user": {"rbac": {"CLERKS"}}, "auth.add_user": {"rbac": {"CLERKS"}}})
     clerk = member("CLERKS", "CUSTOMERS")
 
-    with django_assert_num_queries(2):
+    with django_assert_num_queries(3):  # the grants, the direct ones, the membership requirements (none)
         held = held_permissions(clerk)
     assert len(held) == 4

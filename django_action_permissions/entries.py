@@ -2,8 +2,9 @@
 through the cache `ACTION_PERMISSIONS["CACHE"]` names (if any).
 
 An action permission is a Django permission setup stored with an `ActionPermission` row. Its entry is
-`{"abac": {group: ruleset}, "predicates": {code: fqn}, "no_detail": [group], "staff": [group]}`: each group's ruleset
-as its expression (see the module `predicates`), and the definitions of the predicates they name. Who holds a
+`{"abac": {group: ruleset}, "predicates": {code: fqn}, "no_detail": [group], "staff": [group], "mbac": {"groups":
+[group], "match": "any" | "all"} | None}`: each group's ruleset as its expression (see the module `predicates`), the
+definitions of the predicates they name, and the groups a user must belong to (None: no requirement). Who holds a
 permission (`rbac`) isn't in it: that is always read live from `Group.permissions` / `user.has_perm()`.
 
 Each entry is cached under its own key, and a change of what it's made of (its rows, a predicate it uses, a group it
@@ -53,6 +54,7 @@ def read_entry(perm_code: str) -> dict | None:
         .prefetch_related(
             "no_detail",
             "staff",
+            "mbac",
             Prefetch("group_rules", queryset=ActionPermissionGroup.objects.select_related("group")),
         )
         .first()
@@ -67,7 +69,14 @@ def read_entry(perm_code: str) -> dict | None:
         "predicates": predicates,
         "no_detail": sorted(group.name for group in entry.no_detail.all()),
         "staff": sorted(group.name for group in entry.staff.all()),
+        "mbac": mbac_of(entry),
     }
+
+
+def mbac_of(entry) -> dict | None:
+    """The membership requirement of an `ActionPermission` (its `mbac` prefetched or not): None without groups."""
+    groups = sorted(group.name for group in entry.mbac.all())
+    return {"groups": groups, "match": entry.mbac_match} if groups else None
 
 
 def perm_info(perm_code: str) -> dict | None:

@@ -7,6 +7,7 @@
       shop.view_order:
         rbac: [CLERKS, CUSTOMERS]
         abac: {CUSTOMERS: own_order & ~is_blocked}
+        mbac: {groups: [CUSTOMERS, LAWYERS], match: any}  # optional: the groups a user must belong to
         no_detail: [CLERKS]
         staff: []
 
@@ -85,6 +86,11 @@ def parse_document(document) -> tuple[dict, list[str], dict]:
                     f"{path}.abac.{group}: positions are gone, the expression's order is the execution order"
                 )
             _expect(ruleset, str, f"{path}.abac.{group}")
+        if entry.get("mbac") is not None:
+            mbac = _expect(entry["mbac"], dict, f"{path}.mbac")
+            _strings(_get(mbac, "groups", []), f"{path}.mbac.groups")
+            if mbac.get("match") is not None:
+                _expect(mbac["match"], str, f"{path}.mbac.match")
         for section in ("no_detail", "staff"):
             _strings(_get(entry, section, []), f"{path}.{section}")
         definitions[perm_code] = entry
@@ -108,13 +114,14 @@ def export_document(queryset=None) -> dict:
     """The stored action permissions as a document: the entries of `queryset` (all when None), their rulesets in the
     canonical form, the definitions of the predicates they use, and the groups they name. Groups they don't name are
     left out."""
+    from .entries import mbac_of
     from .models import ActionPermission, ActionPermissionRule
     from .predicates import codes_of
 
     entries = (queryset if queryset is not None else ActionPermission.objects.all()).select_related(
         "permission__content_type"
     )
-    entries = entries.prefetch_related("permission__group_set", "no_detail", "staff", "group_rules__group")
+    entries = entries.prefetch_related("permission__group_set", "no_detail", "staff", "mbac", "group_rules__group")
     permissions, groups, used = {}, set(), set()
     for entry in entries:
         item = {"rbac": sorted(group.name for group in entry.permission.group_set.all())}
@@ -123,11 +130,16 @@ def export_document(queryset=None) -> dict:
             used.update(codes_of(ruleset))
         if abac:
             item["abac"] = abac
+        mbac = mbac_of(entry)
+        if mbac:
+            item["mbac"] = mbac
         for section in ("no_detail", "staff"):
             names = sorted(group.name for group in getattr(entry, section).all())
             if names:
                 item[section] = names
-        groups.update(item["rbac"], abac, item.get("no_detail", ()), item.get("staff", ()))
+        groups.update(
+            item["rbac"], abac, item.get("no_detail", ()), item.get("staff", ()), (mbac or {}).get("groups", ())
+        )
         permissions[entry.perm_code] = item
     rules = {}
     for rule in ActionPermissionRule.objects.filter(code__in=used):

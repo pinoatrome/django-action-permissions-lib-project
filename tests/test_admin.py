@@ -88,6 +88,7 @@ def test_an_entry_is_edited_on_one_page_rbac_and_rules_included(
                 "rbac": [bosses.pk, clerks.pk],
                 "no_detail": [],
                 "staff": [bosses.pk],
+                "mbac_match": "any",
                 "group_rules-TOTAL_FORMS": "2",
                 "group_rules-INITIAL_FORMS": "1",
                 "group_rules-0-id": row.pk,
@@ -134,6 +135,7 @@ def test_a_ruleset_naming_an_unknown_predicate_is_refused(admin_client, loaded):
             "rbac": [Group.objects.get(name="CLERKS").pk],
             "no_detail": [],
             "staff": [],
+            "mbac_match": "any",
             "group_rules-TOTAL_FORMS": "1",
             "group_rules-INITIAL_FORMS": "1",
             "group_rules-0-id": row.pk,
@@ -357,6 +359,7 @@ def test_a_ruleset_for_a_group_not_in_rbac_is_refused(admin_client, loaded):
         "rbac": [],  # CLERKS taken out, its ruleset kept
         "no_detail": [],
         "staff": [],
+        "mbac_match": "any",
         "group_rules-TOTAL_FORMS": "1",
         "group_rules-INITIAL_FORMS": "1",
         "group_rules-0-id": row.pk,

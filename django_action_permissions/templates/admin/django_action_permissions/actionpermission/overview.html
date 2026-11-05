@@ -49,6 +49,7 @@
                 <th scope="row">
                   {% if row.url %}<a href="{{ row.url }}">{{ row.entry.perm_code }}</a>{% else %}{{ row.entry.perm_code }}{% endif %}
                   {% if may_verify %}<a class="dap-quiet" href="{% url opts|admin_urlname:'verify' %}?perm={{ row.entry.perm_code|urlencode }}">verify</a>{% endif %}
+                  {% if row.mbac %}<div class="dap-quiet" title="Required groups (mbac): a user must belong to them, however they hold it">requires {{ row.mbac }}</div>{% endif %}
                 </th>
                 {% for cell in row.cells %}
                   <td class="dap-cell{% if cell.granted %} granted{% endif %}">
@@ -62,6 +63,7 @@
                     {% endif %}
                     {% if cell.no_detail %}<span class="dap-badge" title="May list but not retrieve a single object">no detail</span>{% endif %}
                     {% if cell.staff %}<span class="dap-badge" title="Acts with the rights of their manager">staff</span>{% endif %}
+                    {% if cell.required %}<span class="dap-badge" title="A required group (mbac)">required</span>{% endif %}
                   </td>
                 {% endfor %}
               </tr>

@@ -24,7 +24,7 @@ from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
 from django.shortcuts import resolve_url
 
-from .abac import allowed, refusal, unrestricted
+from .abac import allowed, holds, refusal, unrestricted
 
 
 def _permissions(perm) -> tuple[str, ...]:
@@ -101,9 +101,10 @@ class PermissionRequiredMixin(AccessMixin):
 
     `dispatch` lets in a user holding `permission_required` (all of them, when several): through a group with or
     without a ruleset, so a user restricted to their own objects gets in; with `permission_unrestricted = True`,
-    only one holding them on any object. `get_object()` (put it before `DetailView`, `UpdateView`, `DeleteView`...)
-    refuses an object the rulesets don't allow the user: 404 when they can't read it either, else 403
-    (`not_found_when_unreadable = False`: 403). Define `manager_user(user)` for `staff` groups.
+    only one holding them on any object; either way, meeting their membership requirements (`mbac`).
+    `get_object()` (put it before `DetailView`, `UpdateView`, `DeleteView`...) refuses an object the rulesets don't
+    allow the user: 404 when they can't read it either, else 403 (`not_found_when_unreadable = False`: 403).
+    Define `manager_user(user)` for `staff` groups.
     An anonymous visitor goes to the login page; a signed-in user who may not gets 403 (`AccessMixin`).
     """
 
@@ -125,7 +126,7 @@ class PermissionRequiredMixin(AccessMixin):
         user = self.request.user
         if self.permission_unrestricted:
             return all(unrestricted(user, perm) for perm in self.get_permission_required())
-        return user.has_perms(self.get_permission_required())
+        return all(holds(user, perm) for perm in self.get_permission_required())
 
     def has_object_permission(self, obj) -> bool:
         return self.refused_permission(obj) is None

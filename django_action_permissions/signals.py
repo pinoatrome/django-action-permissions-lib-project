@@ -1,9 +1,9 @@
 """A change in the database drops, once its transaction commits, the cached entries it affects (see `entries`):
 
-- an `ActionPermission` saved or deleted, or its `no_detail` / `staff` changed: its own;
+- an `ActionPermission` saved or deleted, or its `no_detail` / `staff` / `mbac` changed: its own;
 - a group's ruleset (`ActionPermissionGroup`) saved or deleted: its entry's;
 - a predicate's definition (`ActionPermissionRule`) saved: the entries whose rulesets use it;
-- a group renamed or deleted: the entries naming it (a ruleset, `no_detail`, `staff`), collected before the
+- a group renamed or deleted: the entries naming it (a ruleset, `no_detail`, `staff`, `mbac`), collected before the
   deletion's cascade removes their rows.
 """
 
@@ -20,7 +20,9 @@ UID = "django_action_permissions.invalidate"
 
 def _naming(group) -> set[str]:
     return entry_codes(
-        ActionPermission.objects.filter(Q(group_rules__group=group) | Q(no_detail=group) | Q(staff=group)).distinct()
+        ActionPermission.objects.filter(
+            Q(group_rules__group=group) | Q(no_detail=group) | Q(staff=group) | Q(mbac=group)
+        ).distinct()
     )
 
 
@@ -32,6 +34,7 @@ def entry_changed(sender, instance, **kwargs):
 
 @receiver(m2m_changed, sender=ActionPermission.no_detail.through, dispatch_uid=f"{UID}.no_detail")
 @receiver(m2m_changed, sender=ActionPermission.staff.through, dispatch_uid=f"{UID}.staff")
+@receiver(m2m_changed, sender=ActionPermission.mbac.through, dispatch_uid=f"{UID}.mbac")
 def entry_groups_changed(sender, instance, action, **kwargs):
     if action.startswith("post_") and isinstance(instance, ActionPermission):
         invalidate_on_commit({instance.perm_code})

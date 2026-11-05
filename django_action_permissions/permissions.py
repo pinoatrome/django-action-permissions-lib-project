@@ -70,7 +70,7 @@ class BaseActionModelPermission(rest_permissions.BasePermission):
         else:
             if not self.has_detail_access_permission(request, view, user=user, perm_info=perm_info):
                 return False
-        return user.has_perm(perm_code)
+        return abac.holds(user, perm_code, perm_info=perm_info)
 
     def has_object_permission(self, request, view, obj):
         user = self.user(request)
@@ -79,7 +79,7 @@ class BaseActionModelPermission(rest_permissions.BasePermission):
         perm_info = self.get_perm_info(perm_code)
         if not perm_info:
             logger.warning(f"checking object permission '{perm_code}' on instance {obj}: permission info not found")
-            ok = user.has_perm(perm_code, obj=obj)
+            ok = user.has_perm(perm_code, obj=obj)  # not an action permission: no membership requirement
         else:
             # check detail access again, already checked by has_permission
             if not self.has_detail_access_permission(request, view, user=user, perm_info=perm_info):

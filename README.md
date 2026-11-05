@@ -6,6 +6,8 @@
 [![Tested](https://img.shields.io/badge/tested-Django%204.2%20%2B%20Py%203.10%20%7C%20Django%205.2%20%2B%20Py%203.13%20%7C%20Django%206.1%20%2B%20Py%203.14%20%7C%20without%20DRF-success)](#development)
 [![PyPI](https://img.shields.io/pypi/v/django-action-permissions)](https://pypi.org/p/django-action-permissions)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue)](https://github.com/pinoatrome/django-action-permissions-lib-project/blob/develop/LICENSE)
+[![Latest on Django Packages](https://img.shields.io/badge/PyPI-django-action-permissions-lib-project-tags-8c3c26.svg)](https://djangopackages.org/packages/p/django-action-permissions-lib-project/)
+
 
 Action-based permissions for Django REST framework viewsets and plain Django views. A viewset action is checked
 against the Django model permission it stands for, an action permission: which groups hold it (RBAC) and which
@@ -125,6 +127,10 @@ DEFINITIONS = {
         "no_detail": [],  # groups that may list but not retrieve a single object
         "staff": [],  # groups that act with the rights of their manager (`manager_user`)
     },
+    "legal.sign_contract": {
+        "rbac": {"CLERKS"},
+        "mbac": {"groups": ["CUSTOMERS", "LAWYERS"], "match": "any"},  # must belong to one of them ("all": to each)
+    },
     "shop.change_order": {
         "rbac": {"CLERKS", "CUSTOMERS"},
         "abac": {"CUSTOMERS": own_order & ~is_archived},  # ... or composed in Python
@@ -134,7 +140,16 @@ DEFINITIONS = {
 ```
 
 `abac` gives a group one ruleset: the group holds the permission on the objects it allows. A group holding the
-permission without a ruleset holds it on any object. Set it up (after `migrate`, so the permissions exist):
+permission without a ruleset holds it on any object.
+
+`mbac` (membership) is a requirement of the permission itself, not of a grant: a user must belong to the groups it
+lists, at least one (`"match": "any"`, the default) or all of them (`"all"`), to use the permission however they
+hold it: through a group, given directly, or as a superuser. Holding it is still needed (`rbac`, a direct grant,
+`is_superuser`), and the rulesets still run on objects. A user who doesn't meet it is refused on any object and on
+lists, and `held_permissions` leaves the permission out. A superuser outside the groups is refused too: add them to
+one to let them in.
+
+Set it up (after `migrate`, so the permissions exist):
 
 ```python
 from django_action_permissions.rbac import setup_rbac_permissions
@@ -148,7 +163,7 @@ Setup runs in one transaction. It stores the registered predicates (and the defi
 canonical form (`(own_order | is_staff) & ~archived`), and gives the groups the permissions it grants. Without
 `keep`, the groups lose any other permission, and the entries the definitions no longer list, and the predicates no
 longer defined and unused, are removed. Definitions that name a group not set up, gives a ruleset to a group its
-`rbac` doesn't grant, has a ruleset that doesn't parse or names an unknown predicate, or a predicate that doesn't
+`rbac` doesn't grant, has an `mbac` of the wrong shape, has a ruleset that doesn't parse or names an unknown predicate, or a predicate that doesn't
 import, is a `ValueError`, raised before anything is written; so is a list of rules (write `a | b`, or `a & b`).
 
 ## The answer on an object
@@ -336,6 +351,11 @@ what a ruleset refuses, but a rule raising `PermissionDenied` stops the backends
 for a `staff` group's manager: `ACTION_PERMISSIONS["MANAGER_USER"]` names the function (`user -> manager`; the check
 `E007` says when it doesn't import), and without it a staff group allows nothing there.
 
+The backend refuses a user who doesn't meet a permission's `mbac` with `PermissionDenied`, stopping the other
+backends. With an object, it decides (`ModelBackend` answers False); without one, list it before `ModelBackend` for
+`user.has_perm(perm)` to enforce `mbac`. Django's `User.has_perm` answers True for an active superuser before asking
+any backend: a superuser's `mbac` is enforced by `abac`, `BaseActionModelPermission` and `views`, not `user.has_perm`.
+
 `BaseActionModelPermission`, `views` and `abac` don't need the backend: they ask the action permissions directly.
 
 ### In any code
@@ -362,7 +382,7 @@ object refused, the 403 or 404 a view gives. It doesn't let a block or an except
 
 `held_permissions(user)` is what a profile or a menu asks: the action permissions the user holds (through their
 groups or directly), each with whether on any object (as `unrestricted` would answer), filtered in the database in
-two queries, however many action permissions there are.
+four queries, however many action permissions there are.
 
 ## YAML
 
@@ -376,6 +396,7 @@ permissions:
   shop.view_order:
     rbac: [CLERKS, CUSTOMERS]
     abac: {CUSTOMERS: own_order & ~archived | is_staff}
+    mbac: {groups: [CUSTOMERS], match: any}
 ```
 
 ```bash
@@ -434,7 +455,8 @@ it (`rbac.store_predicates()`, what setup does first), without touching the entr
 - `E005` a predicate's function doesn't import; `E006` a group has a ruleset for a permission it doesn't hold;
   `E008` a ruleset doesn't parse, or names a predicate not stored; `W002` there's no action permission (setup not run);
   `W003` a stored predicate isn't used and no `@predicate` defines it any more; `W006` a registered predicate isn't
-  stored (setup hasn't run since it was added).
+  stored (setup hasn't run since it was added). Store it: Sync predicates in the admin using "Sync predicates" in
+  Rules model page, or run the setup command or `manage.py django_action_permissions_load <file> --keep`.
 
 ## Inspiration
 

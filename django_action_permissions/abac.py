@@ -3,7 +3,7 @@ outside one (pages, filters).
 
 - `unrestricted(user, perm_code)`: the user holds the permission on any object.
 - `allowed(user, perm_code, obj)`: the user may use the permission on `obj`.
-- `held_permissions(user)`: every action permission the user holds, and whether on any object, in two queries
+- `held_permissions(user)`: every action permission the user holds, and whether on any object, in four queries
   (what a profile or a menu asks; the checks above read only their own permission's entry).
 
 A user holds a permission through their groups (`rbac`); a group that has a ruleset for it (`abac`) holds it only
@@ -11,6 +11,9 @@ on the objects the ruleset allows. Every group holding the permission is evaluat
 `PermissionDenied` in any of them blocks, else one group allowing is enough, so the answer doesn't depend on the
 order of `user.groups`. Django's `PermissionDenied` blocks, and DRF's too when DRF is installed; nothing here needs
 DRF.
+
+An entry's membership requirement (`mbac`) comes first: a user who doesn't belong to its groups (at least one, or
+all) may not use the permission, however they hold it: through a group, directly, as a superuser (`holds`).
 """
 
 import logging
@@ -45,22 +48,45 @@ def granting_groups(user, perm_code: str) -> list[str]:
     )
 
 
+def meets(user, info: dict | None) -> bool:
+    """Whether `user` meets the membership requirement of the entry `info` (`mbac`): belongs to at least one of its
+    groups, or to all of them. An entry without one (or not an action permission) requires nothing."""
+    mbac = info and info.get("mbac")
+    if not mbac:
+        return True
+    belongs = set(user.groups.filter(name__in=mbac["groups"]).values_list("name", flat=True))
+    return belongs == set(mbac["groups"]) if mbac["match"] == "all" else bool(belongs)
+
+
+def holds(user, perm_code: str, perm_info=_LOAD) -> bool:
+    """Whether `user` holds `perm_code`, maybe on some objects only: authenticated, `user.has_perm(perm_code)` and
+    meeting the entry's membership requirement (`meets`)."""
+    if not user.is_authenticated or not user.has_perm(perm_code):
+        return False
+    info = entries.perm_info(perm_code) if perm_info is _LOAD else perm_info
+    if not meets(user, info):
+        logger.info(f"{perm_code} for {user}: not a member of the required groups {info['mbac']}")
+        return False
+    return True
+
+
 def _restricted(info: dict, group: str) -> bool:
     return bool(info["abac"].get(group))
 
 
 def unrestricted(user, perm_code: str, perm_info=_LOAD) -> bool:
-    """Whether `user` holds `perm_code` on any object: a superuser, a permission given to the user directly, or a
-    group of theirs holding it without a ruleset for it. A permission that isn't an action permission is held on no
-    object through a group (until setup has run, no group is unrestricted)."""
-    if not user.is_authenticated or not user.has_perm(perm_code):
+    """Whether `user` holds `perm_code` (`holds`: the membership requirement met) on any object: a superuser, a
+    permission given to the user directly, or a group of theirs holding it without a ruleset for it. A permission
+    that isn't an action permission is held on no object through a group (until setup has run, no group is
+    unrestricted)."""
+    info = entries.perm_info(perm_code) if perm_info is _LOAD else perm_info
+    if not holds(user, perm_code, perm_info=info):
         return False
     if user.is_superuser:
         return True
     app_label, _, codename = perm_code.partition(".")
     if user.user_permissions.filter(content_type__app_label=app_label, codename=codename).exists():
         return True
-    info = entries.perm_info(perm_code) if perm_info is _LOAD else perm_info
     if info is None:
         logger.warning(f"{perm_code}: not an action permission, no group holds it on any object")
         return False
@@ -70,8 +96,9 @@ def unrestricted(user, perm_code: str, perm_info=_LOAD) -> bool:
 def held_permissions(user) -> dict[str, bool]:
     """The action permissions `user` holds, each with whether they hold it on any object (as `unrestricted`
     answers), filtered in the database: the grants of the user's groups, each with whether that group has a ruleset
-    for the permission, and the permissions given to the user directly. An anonymous or inactive user holds none, a
-    superuser every action permission on any object."""
+    for the permission, and the permissions given to the user directly, less the permissions whose membership
+    requirement (`mbac`) the user doesn't meet. An anonymous or inactive user holds none, a superuser every action
+    permission on any object (whose requirement they meet)."""
     from django.contrib.auth.models import Group, Permission
     from django.db.models import Exists, OuterRef
 
@@ -79,13 +106,15 @@ def held_permissions(user) -> dict[str, bool]:
 
     if not user.is_authenticated or not user.is_active:
         return {}
+    unmet = _unmet_requirements(user)
     code = ("permission__content_type__app_label", "permission__codename")
     if user.is_superuser:
         rows = Permission.objects.filter(action_permission__isnull=False)
-        return {
+        held = {
             f"{app_label}.{codename}": True
             for app_label, codename in rows.values_list("content_type__app_label", "codename")
         }
+        return {perm_code: any_object for perm_code, any_object in held.items() if perm_code not in unmet}
     grants = (
         Group.permissions.through.objects.filter(
             group__in=user.groups.all(), permission__action_permission__isnull=False
@@ -110,7 +139,28 @@ def held_permissions(user) -> dict[str, bool]:
             for app_label, codename in direct.values_list("content_type__app_label", "codename")
         }
     )
-    return held
+    return {perm_code: any_object for perm_code, any_object in held.items() if perm_code not in unmet}
+
+
+def _unmet_requirements(user) -> set[str]:
+    """The action permissions whose membership requirement (`mbac`) `user` doesn't meet: one query, two when there
+    are requirements."""
+    from .models import ActionPermission
+
+    rows = ActionPermission.objects.filter(mbac__isnull=False).values_list(
+        "permission__content_type__app_label", "permission__codename", "mbac_match", "mbac__name"
+    )
+    requirements: dict[str, tuple[str, set[str]]] = {}
+    for app_label, codename, match, group in rows:
+        requirements.setdefault(f"{app_label}.{codename}", (match, set()))[1].add(group)
+    if not requirements:
+        return set()
+    belongs = set(user.groups.values_list("name", flat=True))
+    return {
+        perm_code
+        for perm_code, (match, groups) in requirements.items()
+        if not (groups <= belongs if match == "all" else groups & belongs)
+    }
 
 
 def allowed(user, perm_code: str, obj=None, *, manager_user=None, perm_info=_LOAD, raise_blocks=False) -> bool:
@@ -126,7 +176,9 @@ def allowed(user, perm_code: str, obj=None, *, manager_user=None, perm_info=_LOA
     info = entries.perm_info(perm_code) if perm_info is _LOAD else perm_info
     if unrestricted(user, perm_code, perm_info=info):
         return True
-    if obj is None or not user.has_perm(perm_code):
+    if obj is None or not holds(user, perm_code, perm_info=info):
+        if raise_blocks and obj is not None and not meets(user, info):
+            raise DjangoPermissionDenied(f"{perm_code}: not a member of the required groups")
         return False
     if info is None:
         return user.has_perm(perm_code, obj=obj)

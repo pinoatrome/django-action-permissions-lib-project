@@ -38,8 +38,14 @@ def stored_resolver():
     return stored.__getitem__
 
 
+class Match(models.TextChoices):
+    ANY = "any", "at least one"
+    ALL = "all", "all"
+
+
 class ActionPermission(models.Model):
-    """An action permission: a permission setup stored. The groups it's granted to (`rbac`) are `Group.permissions`."""
+    """An action permission: a permission setup stored. The groups it's granted to (`rbac`) are `Group.permissions`.
+    `mbac`: the groups a user must belong to (at least one, or all: `mbac_match`) to use it, however they hold it."""
 
     permission = models.OneToOneField(Permission, on_delete=models.CASCADE, related_name="action_permission")
     no_detail = models.ManyToManyField(
@@ -47,6 +53,20 @@ class ActionPermission(models.Model):
     )
     staff = models.ManyToManyField(
         Group, blank=True, related_name="+", help_text="Groups that act with the rights of their manager."
+    )
+    mbac = models.ManyToManyField(
+        Group,
+        blank=True,
+        related_name="+",
+        verbose_name="required groups",
+        help_text="Groups a user must belong to, to use the permission however they hold it (superusers too).",
+    )
+    mbac_match = models.CharField(
+        "required groups match",
+        max_length=3,
+        choices=Match.choices,
+        default=Match.ANY,
+        help_text="Belonging to at least one of the required groups is enough, or to all of them.",
     )
 
     class Meta:

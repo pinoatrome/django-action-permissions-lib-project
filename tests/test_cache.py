@@ -63,6 +63,7 @@ def test_a_check_caches_its_own_permissions_entry_only(setup):
             "predicates": {"owner": "tests.rules.owner"},
             "no_detail": ["CLERKS"],
             "staff": [],
+            "mbac": None,
         }
     )
     assert queries(lambda: entries.perm_info(CHANGE)) == 0

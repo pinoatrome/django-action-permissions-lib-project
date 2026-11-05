@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from django.http import Http404
 
 from . import entries
-from .abac import BLOCKS, _restricted, granting_groups, refusal
+from .abac import BLOCKS, _restricted, granting_groups, meets, refusal
 from .backends import BaseRulesBackend, get_rules_backend
 from .predicates import TraceNode, parse
 
@@ -123,6 +123,15 @@ def _explain(explanation: Explanation, manager_user) -> Explanation:
     steps.append(Step(f"holds {perm_code} (has_perm)", holds, detail if holds else "inactive, or not granted"))
     if not holds:
         return explanation.finish(False, f"The user doesn't hold {perm_code}: no group of theirs is granted it.")
+    mbac = info and info.get("mbac")
+    if mbac:
+        member = meets(user, info)
+        many = "all of" if mbac["match"] == "all" else "one of"
+        steps.append(Step(f"a member of {many} {', '.join(mbac['groups'])} (mbac)", member))
+        if not member:
+            return explanation.finish(
+                False, f"The user isn't a member of {many} {', '.join(mbac['groups'])}: {perm_code} requires it."
+            )
     steps.append(Step("superuser", user.is_superuser))
     if user.is_superuser:
         return explanation.finish(True, "A superuser holds every permission on any object.")

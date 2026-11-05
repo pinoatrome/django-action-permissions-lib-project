@@ -118,8 +118,9 @@ def test_setup_stores_the_rulesets_in_their_canonical_form(setup):
             },
             "no_detail": ["CLERKS"],
             "staff": ["BOSSES"],
+            "mbac": None,
         },
-        "auth.view_user": {"abac": {}, "predicates": {}, "no_detail": [], "staff": []},
+        "auth.view_user": {"abac": {}, "predicates": {}, "no_detail": [], "staff": [], "mbac": None},
     }
 
 

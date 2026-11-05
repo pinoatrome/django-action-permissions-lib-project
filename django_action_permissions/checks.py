@@ -190,7 +190,8 @@ def check_table(app_configs=None, databases=None, **kwargs) -> list[checks.Check
                     checks.Warning(
                         f"predicate {code!r} ({registered[code].fqn}) isn't stored: "
                         "setup hasn't run since it was added",
-                        hint="Run the setup to store it, so that rulesets can use it.",
+                        hint='Store it: Sync predicates in the admin using "Sync predicates" in Rules model page, '
+                        "or run the setup command or manage.py django_action_permissions_load <file> --keep.",
                         id=f"{ID}.W006",
                     )
                 )

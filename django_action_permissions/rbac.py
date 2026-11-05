@@ -5,6 +5,9 @@ The definitions map a Django permission string as `user.has_perm()` takes it ("a
 - `rbac`: the groups granted the permission (`Group.permissions`);
 - `abac`: `{group: ruleset}`, the predicates the group's objects must pass, composed with `&`, `|`, `~` (see
   `predicates`): an expression (`"own_order & ~archived"`), or the composition itself in Python;
+- `mbac`: `{"groups": [group], "match": "any" | "all"}` (optional, `match` "any" by default), the groups a user
+  must belong to, at least one or all, to use the permission however they hold it (through a group, directly, as a
+  superuser);
 - `no_detail`: groups that may list but not retrieve a single object;
 - `staff`: groups that act with the rights of their manager.
 
@@ -18,7 +21,8 @@ from .entries import entry_codes, invalidate_on_commit
 from .predicates import NamedPredicate, Ruleset, canonical, discover
 from .utils import rule_error
 
-SECTIONS = ("rbac", "abac", "no_detail", "staff")
+SECTIONS = ("rbac", "abac", "mbac", "no_detail", "staff")
+MATCHES = ("any", "all")
 MERGED = (
     'a group\'s predicates are one ruleset: write {group: "a | b"} (any allows) or {group: "a & b"} (all must pass)'
 )
@@ -94,7 +98,32 @@ def _validate_entry(perm_code: str, item: dict, groups: set[str], resolve) -> di
     no_detail, staff = list(item.get("no_detail") or ()), list(item.get("staff") or ())
     _check_groups(no_detail, groups, f"'{perm_code}' no_detail")
     _check_groups(staff, groups, f"'{perm_code}' staff")
-    return {"rbac": rbac, "abac": abac, "no_detail": no_detail, "staff": staff}
+    return {
+        "rbac": rbac,
+        "abac": abac,
+        "mbac": _mbac(item.get("mbac"), groups, f"'{perm_code}' mbac"),
+        "no_detail": no_detail,
+        "staff": staff,
+    }
+
+
+def _mbac(value, groups: set[str], where: str) -> dict:
+    """The membership requirement as setup writes it: `{"groups": [group], "match"}` (no groups: none)."""
+    if value is None:
+        return {"groups": [], "match": "any"}
+    if not isinstance(value, dict):
+        raise ValueError(f'{where}: {value!r} isn\'t {{"groups": [group], "match": "any" | "all"}}')
+    unknown = set(value) - {"groups", "match"}
+    if unknown:
+        raise ValueError(f"{where}: unknown keys {', '.join(sorted(unknown))} (allowed: groups, match)")
+    names = value.get("groups") or []
+    if isinstance(names, str) or not all(isinstance(name, str) for name in names):
+        raise ValueError(f"{where}: groups {names!r} isn't a list of group names")
+    _check_groups(names, groups, where)
+    match = value.get("match") or "any"
+    if match not in MATCHES:
+        raise ValueError(f"{where}: match {match!r} isn't one of {', '.join(MATCHES)}")
+    return {"groups": sorted(set(names)), "match": match}
 
 
 def _write_predicates(definitions: dict[str, dict]) -> None:
@@ -170,6 +199,10 @@ def setup_rbac_permissions(definitions, group_names, rules=None, keep=False) -> 
             action_permission, _created = ActionPermission.objects.get_or_create(permission=permission)
             action_permission.no_detail.set([group_objects[name] for name in entry["no_detail"]])
             action_permission.staff.set([group_objects[name] for name in entry["staff"]])
+            action_permission.mbac.set([group_objects[name] for name in entry["mbac"]["groups"]])
+            if action_permission.mbac_match != entry["mbac"]["match"]:
+                action_permission.mbac_match = entry["mbac"]["match"]
+                action_permission.save(update_fields=["mbac_match"])
             action_permission.group_rules.all().delete()
             for group, expression in entry["abac"].items():
                 ActionPermissionGroup.objects.create(

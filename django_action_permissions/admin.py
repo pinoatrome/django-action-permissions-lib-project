@@ -27,7 +27,7 @@ from django.utils.html import format_html, format_html_join
 
 from . import checks, conf
 from .abac import held_permissions
-from .entries import entry_codes
+from .entries import entry_codes, mbac_of
 from .explain import draft_info, explain
 from .models import ActionPermission, ActionPermissionGroup, ActionPermissionRule, stored_resolver
 from .predicates import RulesetSyntaxError, codes_of, discover, parse
@@ -353,10 +353,13 @@ class VerifyForm(forms.Form):
 @admin.register(ActionPermission)
 class ActionPermissionAdmin(admin.ModelAdmin):
     form = ActionPermissionForm
-    fieldsets = [(None, {"fields": ["permission", "rbac", "no_detail", "staff"], "description": SETUP_NOTE})]
-    filter_horizontal = ["no_detail", "staff"]
+    fieldsets = [
+        (None, {"fields": ["permission", "rbac", "no_detail", "staff"], "description": SETUP_NOTE}),
+        ("Required groups (mbac)", {"fields": ["mbac", "mbac_match"]}),
+    ]
+    filter_horizontal = ["no_detail", "staff", "mbac"]
     inlines = [ActionPermissionGroupInline]
-    list_display = ["perm_code", "rbac", "rulesets", "no_detail_groups", "staff_groups"]
+    list_display = ["perm_code", "rbac", "rulesets", "required_groups", "no_detail_groups", "staff_groups"]
     list_filter = ["permission__content_type__app_label", "group_rules__group", "group_rules__rules"]
     search_fields = ["permission__codename", "permission__content_type__app_label", "permission__name"]
     actions = ["export_selected"]
@@ -367,7 +370,7 @@ class ActionPermissionAdmin(admin.ModelAdmin):
             super()
             .get_queryset(request)
             .select_related("permission__content_type")
-            .prefetch_related("permission__group_set", "no_detail", "staff", "group_rules__group")
+            .prefetch_related("permission__group_set", "no_detail", "staff", "mbac", "group_rules__group")
         )
 
     def get_autocomplete_fields(self, request):
@@ -393,6 +396,11 @@ class ActionPermissionAdmin(admin.ModelAdmin):
     @admin.display(description="abac rulesets")
     def rulesets(self, entry):
         return "; ".join(f"{row.group.name}: {row.ruleset}" for row in entry.group_rules.all())
+
+    @admin.display(description="mbac")
+    def required_groups(self, entry):
+        mbac = mbac_of(entry)
+        return f"{entry.get_mbac_match_display()}: {', '.join(mbac['groups'])}" if mbac else ""
 
     @admin.display(description="no detail")
     def no_detail_groups(self, entry):
@@ -534,7 +542,7 @@ class ActionPermissionAdmin(admin.ModelAdmin):
         for entry in entries:
             named.update(group.name for group in entry.permission.group_set.all())
             named.update(row.group.name for row in entry.group_rules.all())
-            named.update(group.name for group in [*entry.no_detail.all(), *entry.staff.all()])
+            named.update(group.name for group in [*entry.no_detail.all(), *entry.staff.all(), *entry.mbac.all()])
         columns = sorted({filters["group"]} & named if filters["group"] else named)
         rows = [self._overview_row(request, entry, columns) for entry in entries]
         column_links = []  # each group's header: the same filters, only that group (Django 5.1's {% querystring %})
@@ -573,6 +581,8 @@ class ActionPermissionAdmin(admin.ModelAdmin):
         rulesets = {row.group.name: row for row in entry.group_rules.all()}
         no_detail = {group.name for group in entry.no_detail.all()}
         staff = {group.name for group in entry.staff.all()}
+        mbac = mbac_of(entry)
+        required = set(mbac["groups"]) if mbac else set()
         ruleset_opts = ActionPermissionGroup._meta
         may_add_ruleset = self.admin_site._registry.get(ActionPermissionGroup) is not None and request.user.has_perm(
             f"{ruleset_opts.app_label}.add_{ruleset_opts.model_name}"
@@ -581,7 +591,13 @@ class ActionPermissionAdmin(admin.ModelAdmin):
         cells = []
         for name in columns:
             row = rulesets.get(name)
-            cell = {"group": name, "granted": name in granted, "no_detail": name in no_detail, "staff": name in staff}
+            cell = {
+                "group": name,
+                "granted": name in granted,
+                "no_detail": name in no_detail,
+                "staff": name in staff,
+                "required": name in required,
+            }
             if row is not None:
                 cell.update(ruleset=row.ruleset, url=_url(self.admin_site, ruleset_opts, "change", row.pk))
             elif name in granted and add_ruleset:
@@ -592,6 +608,7 @@ class ActionPermissionAdmin(admin.ModelAdmin):
             "model": f"{entry.permission.content_type.app_label}.{entry.permission.content_type.model}",
             "url": _url(self.admin_site, self.opts, "change", entry.pk),
             "cells": cells,
+            "mbac": mbac and f"{entry.get_mbac_match_display()}: {', '.join(mbac['groups'])}",
         }
 
     def verify_view(self, request):
